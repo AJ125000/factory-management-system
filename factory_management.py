@@ -29,6 +29,9 @@ class StoneFactoryPaymentSystem:
         self.load_workers()           # ── Populate widgets
         self.load_rates()
 
+        # Back up the DB and close cleanly when the window is closed
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
     # ─────────────────────────────────────────────────────────────────────── DB
     def init_database(self):
         """Create (or migrate) the SQLite database and tables."""
@@ -482,7 +485,7 @@ class StoneFactoryPaymentSystem:
             SELECT operator_rate_per_sqft,
                    loader_loading_rate,
                    loader_unloading_base_rate
-            FROM rates ORDER BY updated_date DESC LIMIT 1
+            FROM rates ORDER BY id DESC LIMIT 1
         """)
         row = cur.fetchone()
         if row:
@@ -550,7 +553,7 @@ class StoneFactoryPaymentSystem:
                 SELECT operator_rate_per_sqft,
                        loader_loading_rate,
                        loader_unloading_base_rate
-                FROM rates ORDER BY updated_date DESC LIMIT 1
+                FROM rates ORDER BY id DESC LIMIT 1
             """)
             rates = cur.fetchone()
             if not rates:
@@ -695,23 +698,25 @@ class StoneFactoryPaymentSystem:
             messagebox.showerror("Error", f"Report error: {exc}")
 
     # ────────────────────────────────────────────── backup database ──
-    def backup_database(src_path="stone_factory.db", backup_dir="backups"):
-        # ensure backup folder exists
+    def backup_database(self, src_path="stone_factory.db", backup_dir="backups"):
+        """Copy the live database to backups/stone_factory_<timestamp>.db."""
         os.makedirs(backup_dir, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         dst = os.path.join(backup_dir, f"stone_factory_{timestamp}.db")
-        # copy the live database
+        self.conn.commit()  # flush pending writes before copying
         shutil.copy2(src_path, dst)
-        print(f"Database backed up to {dst}")    
+        return dst
 
     # ───────────────────────────────────────────── cleanup ──
-    def __del__(self):
+    def on_close(self):
         try:
-            # before closing connection, make a timestamped backup
             self.backup_database()
+        except Exception as exc:
+            messagebox.showwarning("Backup failed",
+                                   f"Could not back up the database:\n{exc}")
+        finally:
             self.conn.close()
-        except Exception:
-            pass
+            self.root.destroy()
 
 # ────────────────────────────────────────────────────── main loop ──
 def main():
