@@ -1,0 +1,5 @@
+pandas
+pyinstaller
+openpyxl
+pillow
+ttkthemes

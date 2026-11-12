@@ -1,0 +1,13 @@
+# Live data – contains real worker/payment records; back up separately
+*.db
+backups/
+*.log
+
+# Python / PyInstaller build output
+__pycache__/
+*.pyc
+build/
+dist/
+
+# macOS
+.DS_Store
