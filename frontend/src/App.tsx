@@ -1,17 +1,32 @@
+import { Center, Loader } from '@mantine/core';
 import { DatesProvider } from '@mantine/dates';
-import { useEffect } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate, Route, Routes } from 'react-router';
 
 import { useSettings } from './api/hooks';
 import AppLayout from './components/AppLayout';
 import { setUiLanguage } from './i18n';
-import PrintSlipsPage from './pages/PrintSlipsPage';
-import ProductionPage from './pages/ProductionPage';
-import RatesPage from './pages/RatesPage';
-import SettingsPage from './pages/SettingsPage';
-import WagesPage from './pages/WagesPage';
-import WorkersPage from './pages/WorkersPage';
+
+// Each screen loads on first visit, so the app starts fast and the chart
+// library is only downloaded when a screen with charts is opened.
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const ProductionPage = lazy(() => import('./pages/ProductionPage'));
+const WagesPage = lazy(() => import('./pages/WagesPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const WorkersPage = lazy(() => import('./pages/WorkersPage'));
+const RatesPage = lazy(() => import('./pages/RatesPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const PrintSlipsPage = lazy(() => import('./pages/PrintSlipsPage'));
+const PrintReportPage = lazy(() => import('./pages/PrintReportPage'));
+
+function PageLoader() {
+  return (
+    <Center py="xl">
+      <Loader />
+    </Center>
+  );
+}
 
 export default function App() {
   const { i18n } = useTranslation();
@@ -26,18 +41,23 @@ export default function App() {
 
   return (
     <DatesProvider settings={{ locale: i18n.language, firstDayOfWeek: 1 }}>
-      <Routes>
-        <Route path="/print/wages" element={<PrintSlipsPage />} />
-        <Route element={<AppLayout />}>
-          <Route index element={<Navigate to="/production" replace />} />
-          <Route path="/production" element={<ProductionPage />} />
-          <Route path="/wages" element={<WagesPage />} />
-          <Route path="/workers" element={<WorkersPage />} />
-          <Route path="/rates" element={<RatesPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="*" element={<Navigate to="/production" replace />} />
-        </Route>
-      </Routes>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route path="/print/wages" element={<PrintSlipsPage />} />
+          <Route path="/print/production" element={<PrintReportPage />} />
+          <Route element={<AppLayout />}>
+            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/production" element={<ProductionPage />} />
+            <Route path="/wages" element={<WagesPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/workers" element={<WorkersPage />} />
+            <Route path="/rates" element={<RatesPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Route>
+        </Routes>
+      </Suspense>
     </DatesProvider>
   );
 }

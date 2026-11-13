@@ -1,6 +1,6 @@
 [project]
 name = "fms"
-version = "0.2.0"
+version = "0.3.0"
 description = "Kota Stone Factory Management System - hub server"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -10,6 +10,7 @@ dependencies = [
     "sqlalchemy>=2.0.30",
     "alembic>=1.13",
     "pydantic>=2.7",
+    "openpyxl>=3.1",
 ]
 
 [dependency-groups]

@@ -22,6 +22,7 @@ void i18n.use(initReactI18next).init({
   lng: storedLanguage(),
   fallbackLng: 'en',
   interpolation: { escapeValue: false }, // React already escapes
+  showSupportNotice: false,
 });
 dayjs.locale(storedLanguage());
 

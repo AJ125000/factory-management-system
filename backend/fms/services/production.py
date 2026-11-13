@@ -70,7 +70,7 @@ def preview_wage(session: Session, data: WagePreviewIn) -> WagePreviewOut:
     """What an entry would pay, without saving it (live preview while typing)."""
     worker = session.get(Worker, data.worker_id)
     if worker is None:
-        raise Invalid("Unknown worker", worker_id=data.worker_id)
+        raise Invalid("Unknown worker", reason="unknown_worker", worker_id=data.worker_id)
     stone = StoneEntry(data.length_ft, data.width_ft, data.cuts, data.quantity)
     result, missing = _wage(worker.worker_type, data.entry_date, stone, RateBook.load(session))
     return WagePreviewOut(
@@ -119,7 +119,7 @@ def get_entry(session: Session, entry_id: str) -> ProductionEntry:
 def _usable_worker(session: Session, worker_id: str) -> Worker:
     worker = session.get(Worker, worker_id)
     if worker is None:
-        raise Invalid("Unknown worker", worker_id=worker_id)
+        raise Invalid("Unknown worker", reason="unknown_worker", worker_id=worker_id)
     if worker.is_archived:
         raise Conflict(
             "This worker is archived. Restore them before adding production.",
@@ -130,7 +130,11 @@ def _usable_worker(session: Session, worker_id: str) -> Worker:
 
 def _check_date(entry_date: date) -> None:
     if entry_date > today():
-        raise Invalid("The entry date can't be in the future", entry_date=entry_date.isoformat())
+        raise Invalid(
+            "The entry date can't be in the future",
+            reason="future_date",
+            entry_date=entry_date.isoformat(),
+        )
 
 
 def create_entry(session: Session, data: ProductionCreate) -> ProductionEntry:

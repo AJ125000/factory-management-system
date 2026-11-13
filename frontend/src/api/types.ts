@@ -128,3 +128,23 @@ export interface AppSettings {
   print_language: Language;
   pay_period: PayPeriod;
 }
+
+export type GroupBy = 'day' | 'month' | 'year';
+
+export interface ProductionBucket {
+  period: string; // "2026-11-05", "2026-11" or "2026"
+  entry_count: number;
+  total_quantity: number;
+  total_area_sqft: Decimal;
+  total_cuts: number;
+  total_wage: Decimal;
+  missing_rate_entries: number;
+}
+
+export interface ProductionSummary {
+  start: ISODate;
+  end: ISODate;
+  group_by: GroupBy;
+  buckets: ProductionBucket[];
+  totals: ProductionBucket;
+}

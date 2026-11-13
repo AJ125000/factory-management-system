@@ -77,5 +77,8 @@ def _serve_frontend(app: FastAPI, static_dir: Path) -> None:
             # Built assets have content hashes in their names, so they can be cached forever.
             cache = "public, max-age=31536000, immutable" if path.startswith("assets/") else None
             return FileResponse(candidate, headers={"Cache-Control": cache} if cache else None)
+        if "." in path.rsplit("/", 1)[-1]:
+            # A missing *file* (e.g. favicon.ico, a stale asset) is a real 404, not a screen.
+            raise HTTPException(status_code=404)
         # Any other path is a screen inside the app; always fetch the latest index.html.
         return FileResponse(index, headers={"Cache-Control": "no-cache"})

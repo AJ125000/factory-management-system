@@ -98,11 +98,14 @@ def create_rate(session: Session, data: RateCreate) -> Rate:
     try:
         wt = get_worker_type(session, data.worker_type_id)
     except NotFound as exc:
-        raise Invalid("Unknown worker type", worker_type_id=data.worker_type_id) from exc
+        raise Invalid(
+            "Unknown worker type", reason="unknown_worker_type", worker_type_id=data.worker_type_id
+        ) from exc
     allowed = SCHEME_COMPONENTS[PayScheme(wt.pay_scheme)]
     if data.component not in allowed:
         raise Invalid(
             f"{wt.name_en} is paid by {', '.join(allowed)}, not {data.component}",
+            reason="component_not_allowed",
             allowed_components=[str(c) for c in allowed],
         )
     rate = Rate(

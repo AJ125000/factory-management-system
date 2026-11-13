@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
 
 import { useSettings, useWagesReport } from '../api/hooks';
+import { ExportMenu } from '../components/ExportMenu';
 import type { Language, WorkerWages } from '../api/types';
 import {
   PageHeader,
@@ -90,6 +91,15 @@ export default function WagesPage() {
                 ]}
               />
             </Stack>
+            <ExportMenu
+              kind="wages"
+              params={{
+                start: active.start,
+                end: active.end,
+                worker_id: selected.length && !allSelected ? selected : undefined,
+              }}
+              disabled={rows.length === 0}
+            />
             <Button leftSection={<IconPrinter size={18} />} onClick={print} disabled={rows.length === 0}>
               {selected.length && !allSelected
                 ? t('wages.printSelected', { count: selected.length })

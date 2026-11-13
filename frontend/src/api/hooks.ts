@@ -10,6 +10,8 @@ import type {
   PayScheme,
   ProductionEntry,
   ProductionInput,
+  ProductionSummary,
+  GroupBy,
   Rate,
   RateComponent,
   WagePreview,
@@ -218,4 +220,34 @@ export function useWagesReport(
       }),
     enabled: Boolean(start && end),
   });
+}
+
+export function useProductionSummary(
+  start: ISODate,
+  end: ISODate,
+  groupBy: GroupBy,
+  workerIds?: string[],
+) {
+  return useQuery({
+    queryKey: [...keys.reports, 'production', start, end, groupBy, workerIds],
+    queryFn: () =>
+      api<ProductionSummary>('GET', '/reports/production', {
+        params: { start, end, group_by: groupBy, worker_id: workerIds },
+      }),
+    enabled: Boolean(start && end),
+  });
+}
+
+/** Link that downloads an Excel export (the browser handles the file save). */
+export function exportUrl(
+  kind: 'wages' | 'production',
+  params: Record<string, string | string[] | undefined>,
+): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === '') continue;
+    if (Array.isArray(value)) value.forEach((v) => search.append(key, v));
+    else search.append(key, value);
+  }
+  return `/api/exports/${kind}.xlsx?${search}`;
 }

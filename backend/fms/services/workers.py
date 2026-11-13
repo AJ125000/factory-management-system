@@ -37,9 +37,15 @@ def _check_type_usable(session: Session, worker_type_id: str) -> None:
     try:
         wt = get_worker_type(session, worker_type_id)
     except NotFound as exc:
-        raise Invalid("Unknown worker type", worker_type_id=worker_type_id) from exc
+        raise Invalid(
+            "Unknown worker type", reason="unknown_worker_type", worker_type_id=worker_type_id
+        ) from exc
     if not wt.is_active:
-        raise Invalid("This worker type is no longer in use", worker_type_id=worker_type_id)
+        raise Invalid(
+            "This worker type is no longer in use",
+            reason="worker_type_inactive",
+            worker_type_id=worker_type_id,
+        )
 
 
 def _check_duplicate_name(session: Session, name: str, exclude_id: str | None = None) -> None:

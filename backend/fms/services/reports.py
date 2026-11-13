@@ -33,12 +33,12 @@ def _area(value: Decimal) -> Decimal:
     return value.quantize(AREA_PLACES, rounding=ROUND_HALF_UP)
 
 
-def _check_period(start: date, end: date) -> None:
+def check_period(start: date, end: date) -> None:
     if start > end:
-        raise Invalid("The start date must be on or before the end date")
+        raise Invalid("The start date must be on or before the end date", reason="bad_period")
 
 
-def _entries(
+def entries_in_period(
     session: Session, start: date, end: date, worker_ids: Sequence[str] | None
 ) -> list[ProductionEntry]:
     stmt = (
@@ -59,10 +59,10 @@ def wages_report(
     include_entries: bool = False,
 ) -> WagesReportOut:
     """Wages earned by each worker who has production in the period."""
-    _check_period(start, end)
+    check_period(start, end)
     book = RateBook.load(session)
     by_worker: dict[str, list[ProductionEntry]] = {}
-    for entry in _entries(session, start, end, worker_ids):
+    for entry in entries_in_period(session, start, end, worker_ids):
         by_worker.setdefault(entry.worker_id, []).append(entry)
 
     rows: list[WorkerWagesOut] = []
@@ -155,11 +155,11 @@ def production_summary(
     worker_ids: Sequence[str] | None = None,
 ) -> ProductionSummaryOut:
     """Production (and wages) per day, month or year. Periods with no entries are omitted."""
-    _check_period(start, end)
+    check_period(start, end)
     book = RateBook.load(session)
     buckets: dict[str, _Bucket] = {}
     totals = _Bucket("total")
-    for entry in _entries(session, start, end, worker_ids):
+    for entry in entries_in_period(session, start, end, worker_ids):
         result, _ = entry_wage(entry, book)
         wage = result.total if result else None
         key = _period_key(entry.entry_date, group_by)

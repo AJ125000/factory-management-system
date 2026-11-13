@@ -1,5 +1,6 @@
 import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
+import '@mantine/charts/styles.css';
 import '@mantine/notifications/styles.css';
 import '@fontsource/noto-sans/400.css';
 import '@fontsource/noto-sans/600.css';
@@ -20,6 +21,7 @@ import { BrowserRouter } from 'react-router';
 
 import App from './App';
 import i18n from './i18n';
+import { errorMessage } from './lib/errors';
 import { theme } from './theme';
 
 declare module '@tanstack/react-query' {
@@ -30,7 +32,7 @@ declare module '@tanstack/react-query' {
 }
 
 function showError(error: Error) {
-  notifications.show({ color: 'red', title: i18n.t('app.error'), message: error.message });
+  notifications.show({ color: 'red', title: i18n.t('app.error'), message: errorMessage(error) });
 }
 
 const queryClient = new QueryClient({

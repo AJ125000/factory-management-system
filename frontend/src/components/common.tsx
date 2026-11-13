@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 
 import type { Worker } from '../api/types';
 import { localName } from '../i18n';
+import { errorMessage } from '../lib/errors';
 import { DATE_INPUT_FORMAT, parseTypedDate } from '../lib/format';
 import { PRESETS, presetPeriod, type Period, type PeriodPreset } from '../lib/periods';
 
@@ -32,7 +33,7 @@ export function notifySaved(message: string) {
 export function notifyError(error: unknown) {
   notifications.show({
     color: 'red',
-    message: error instanceof Error ? error.message : String(error),
+    message: typeof error === 'string' ? error : errorMessage(error),
   });
 }
 

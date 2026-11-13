@@ -1,12 +1,25 @@
-import { AppShell, Burger, Group, NavLink, SegmentedControl, Text, Title } from '@mantine/core';
+import {
+  AppShell,
+  Burger,
+  Center,
+  Group,
+  Loader,
+  NavLink,
+  SegmentedControl,
+  Text,
+  Title,
+} from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
+  IconChartBar,
   IconCoinRupee,
+  IconLayoutDashboard,
   IconPercentage,
   IconSettings,
   IconStack2,
   IconUsers,
 } from '@tabler/icons-react';
+import { Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NavLink as RouterLink, Outlet, useLocation } from 'react-router';
 
@@ -15,8 +28,10 @@ import type { Language } from '../api/types';
 import { localName, setUiLanguage } from '../i18n';
 
 const LINKS = [
+  { to: '/dashboard', key: 'nav.dashboard', icon: IconLayoutDashboard },
   { to: '/production', key: 'nav.production', icon: IconStack2 },
   { to: '/wages', key: 'nav.wages', icon: IconCoinRupee },
+  { to: '/reports', key: 'nav.reports', icon: IconChartBar },
   { to: '/workers', key: 'nav.workers', icon: IconUsers },
   { to: '/rates', key: 'nav.rates', icon: IconPercentage },
   { to: '/settings', key: 'nav.settings', icon: IconSettings },
@@ -92,7 +107,15 @@ export default function AppLayout() {
       </AppShell.Navbar>
 
       <AppShell.Main>
-        <Outlet />
+        <Suspense
+          fallback={
+            <Center py="xl">
+              <Loader />
+            </Center>
+          }
+        >
+          <Outlet />
+        </Suspense>
       </AppShell.Main>
     </AppShell>
   );

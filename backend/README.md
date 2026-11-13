@@ -13,6 +13,13 @@ uv run ruff check .     # lint
 uv run python -m fms    # start the server on http://127.0.0.1:8765 (API docs at /docs)
 ```
 
+Server options (unknown options are rejected, never silently ignored):
+
+```bash
+uv run python -m fms --port 8766 --data-dir /path/to/test-data   # a separate test hub
+uv run python -m fms --help
+```
+
 Data is stored in the platform's app-data folder (on Windows,
 `%LOCALAPPDATA%\FMS\fms.db`). Set `FMS_DATA_DIR` to use a different folder.
 
@@ -22,7 +29,7 @@ Data is stored in the platform's app-data folder (on Windows,
 |---|---|
 | `fms/wages.py` | Pure wage formulas (no database) |
 | `fms/models.py` | Database tables |
-| `fms/services/` | Business rules: workers, rates, production, reports |
+| `fms/services/` | Business rules: workers, rates, production, reports, Excel exports |
 | `fms/api/` | HTTP endpoints (thin layer over services) |
 | `fms/migrations/` | Alembic schema migrations, applied automatically on start |
 | `tests/` | Automated tests |
