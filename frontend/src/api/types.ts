@@ -127,6 +127,7 @@ export interface AppSettings {
   ui_language: Language;
   print_language: Language;
   pay_period: PayPeriod;
+  phone_url: string;
 }
 
 export type GroupBy = 'day' | 'month' | 'year';
@@ -147,4 +148,12 @@ export interface ProductionSummary {
   group_by: GroupBy;
   buckets: ProductionBucket[];
   totals: ProductionBucket;
+}
+
+export interface ConnectInfo {
+  tailscale_installed: boolean;
+  tailscale_running: boolean;
+  detected_url: string | null;
+  phone_url: string | null;
+  hub_port: number;
 }

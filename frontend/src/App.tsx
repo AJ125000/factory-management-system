@@ -10,15 +10,38 @@ import { setUiLanguage } from './i18n';
 
 // Each screen loads on first visit, so the app starts fast and the chart
 // library is only downloaded when a screen with charts is opened.
-const DashboardPage = lazy(() => import('./pages/DashboardPage'));
-const ProductionPage = lazy(() => import('./pages/ProductionPage'));
-const WagesPage = lazy(() => import('./pages/WagesPage'));
-const ReportsPage = lazy(() => import('./pages/ReportsPage'));
-const WorkersPage = lazy(() => import('./pages/WorkersPage'));
-const RatesPage = lazy(() => import('./pages/RatesPage'));
-const SettingsPage = lazy(() => import('./pages/SettingsPage'));
-const PrintSlipsPage = lazy(() => import('./pages/PrintSlipsPage'));
-const PrintReportPage = lazy(() => import('./pages/PrintReportPage'));
+const screens = {
+  dashboard: () => import('./pages/DashboardPage'),
+  production: () => import('./pages/ProductionPage'),
+  wages: () => import('./pages/WagesPage'),
+  reports: () => import('./pages/ReportsPage'),
+  workers: () => import('./pages/WorkersPage'),
+  rates: () => import('./pages/RatesPage'),
+  settings: () => import('./pages/SettingsPage'),
+  printSlips: () => import('./pages/PrintSlipsPage'),
+  printReport: () => import('./pages/PrintReportPage'),
+};
+const DashboardPage = lazy(screens.dashboard);
+const ProductionPage = lazy(screens.production);
+const WagesPage = lazy(screens.wages);
+const ReportsPage = lazy(screens.reports);
+const WorkersPage = lazy(screens.workers);
+const RatesPage = lazy(screens.rates);
+const SettingsPage = lazy(screens.settings);
+const PrintSlipsPage = lazy(screens.printSlips);
+const PrintReportPage = lazy(screens.printReport);
+
+/**
+ * Shortly after start-up, load the code of every screen in the background. Once loaded
+ * it stays in memory, so the owner can switch screens even if the laptop then goes off
+ * (the service worker also keeps it for the next start).
+ */
+function preloadScreens() {
+  setTimeout(() => {
+    for (const load of Object.values(screens)) load().catch(() => {});
+  }, 1500);
+}
+preloadScreens();
 
 function PageLoader() {
   return (

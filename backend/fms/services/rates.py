@@ -22,7 +22,7 @@ from ..models import Rate
 from ..schemas import RateCreate, RateUpdate
 from ..wages import SCHEME_COMPONENTS, PayScheme, RateComponent
 from . import audit
-from ._common import apply_changes
+from ._common import apply_changes, existing_replay
 from .worker_types import get_worker_type
 
 ENTITY = "rate"
@@ -95,6 +95,8 @@ def _flush_unique(session: Session) -> None:
 
 
 def create_rate(session: Session, data: RateCreate) -> Rate:
+    if replay := existing_replay(session, Rate, data.id):
+        return replay
     try:
         wt = get_worker_type(session, data.worker_type_id)
     except NotFound as exc:
@@ -109,6 +111,7 @@ def create_rate(session: Session, data: RateCreate) -> Rate:
             allowed_components=[str(c) for c in allowed],
         )
     rate = Rate(
+        **({"id": str(data.id)} if data.id else {}),
         worker_type_id=wt.id,
         component=data.component.value,
         rate_per_sqft=data.rate_per_sqft,

@@ -1,5 +1,9 @@
 /** Thin fetch wrapper. Backend errors look like {"error": {code, message, details}}. */
 
+import { markReachable, markUnreachable } from '../lib/hub';
+
+const GATEWAY_ERRORS = new Set([502, 503, 504]);
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -58,10 +62,18 @@ export async function api<T>(
       method,
       headers: options.body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      signal: AbortSignal.timeout(20_000),
     });
   } catch {
+    markUnreachable();
     throw new ApiError(0, 'offline', 'Cannot reach the FMS server. Is it running?');
   }
+  // Tailscale answers 502/503/504 when the laptop is on but the FMS server isn't running.
+  if (GATEWAY_ERRORS.has(resp.status)) {
+    markUnreachable();
+    throw new ApiError(0, 'offline', 'Cannot reach the FMS server. Is it running?');
+  }
+  markReachable();
   if (!resp.ok) throw await parseError(resp);
   if (resp.status === 204) return undefined as T;
   return (await resp.json()) as T;

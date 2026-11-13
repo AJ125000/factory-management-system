@@ -19,8 +19,10 @@ import { useTranslation } from 'react-i18next';
 
 import { useSaveWorkerType, useSettings, useUpdateSettings, useWorkerTypes } from '../api/hooks';
 import type { AppSettings, Language, PayPeriod, PayScheme, WorkerType } from '../api/types';
+import { ConnectPhone } from '../components/ConnectPhone';
 import { PageHeader, notifySaved } from '../components/common';
 import { localName, setUiLanguage } from '../i18n';
+import { useHubState } from '../lib/hub';
 
 export default function SettingsPage() {
   const { t } = useTranslation();
@@ -29,6 +31,7 @@ export default function SettingsPage() {
       <PageHeader title={t('settings.title')} />
       <Stack gap="lg" maw={900}>
         <FactorySettings />
+        <ConnectPhone />
         <WorkerTypes />
       </Stack>
     </>
@@ -39,6 +42,7 @@ function FactorySettings() {
   const { t } = useTranslation();
   const settings = useSettings();
   const update = useUpdateSettings();
+  const { reachable } = useHubState();
   const [values, setValues] = useState<AppSettings | null>(null);
   useEffect(() => {
     if (settings.data && !values) setValues(settings.data);
@@ -126,7 +130,16 @@ function FactorySettings() {
           />
         </SimpleGrid>
         <Group justify="flex-end">
-          <Button type="submit" loading={update.isPending} disabled={!values.factory_name_en.trim()}>
+          {!reachable && (
+            <Text size="sm" c="dimmed">
+              {t('sync.needsLaptop')}
+            </Text>
+          )}
+          <Button
+            type="submit"
+            loading={update.isPending}
+            disabled={!values.factory_name_en.trim() || !reachable}
+          >
             {t('common.save')}
           </Button>
         </Group>
@@ -139,6 +152,7 @@ function WorkerTypes() {
   const { t, i18n } = useTranslation();
   const types = useWorkerTypes(true);
   const save = useSaveWorkerType();
+  const { reachable } = useHubState();
   const [editing, setEditing] = useState<WorkerType | 'new' | null>(null);
 
   const schemeLabel = (s: PayScheme) =>
@@ -148,7 +162,13 @@ function WorkerTypes() {
     <Card withBorder>
       <Group justify="space-between" mb={4}>
         <Title order={4}>{t('settings.workerTypes')}</Title>
-        <Button variant="light" leftSection={<IconPlus size={16} />} onClick={() => setEditing('new')}>
+        <Button
+          variant="light"
+          leftSection={<IconPlus size={16} />}
+          disabled={!reachable}
+          title={reachable ? undefined : t('sync.needsLaptop')}
+          onClick={() => setEditing('new')}
+        >
           {t('settings.addType')}
         </Button>
       </Group>
@@ -173,13 +193,14 @@ function WorkerTypes() {
                 </Table.Td>
                 <Table.Td>
                   <Group gap="xs" justify="flex-end" wrap="nowrap">
-                    <Button size="xs" variant="subtle" onClick={() => setEditing(wt)}>
+                    <Button size="xs" variant="subtle" disabled={!reachable} onClick={() => setEditing(wt)}>
                       {t('common.edit')}
                     </Button>
                     <Button
                       size="xs"
                       variant="subtle"
                       color={wt.is_active ? 'gray' : 'teal'}
+                      disabled={!reachable}
                       onClick={() =>
                         save.mutate(
                           { id: wt.id, is_active: !wt.is_active },

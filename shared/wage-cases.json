@@ -1,0 +1,243 @@
+[
+  {
+    "name": "cutting basic",
+    "scheme": "cutting",
+    "length_ft": "2",
+    "width_ft": "3",
+    "cuts": 2,
+    "quantity": 5,
+    "rates": {
+      "cutting": "1.5"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "cutting",
+          "amount": "180.00"
+        }
+      ],
+      "total": "180.00",
+      "missing": []
+    }
+  },
+  {
+    "name": "cutting decimals",
+    "scheme": "cutting",
+    "length_ft": "1.1",
+    "width_ft": "1.1",
+    "cuts": 1,
+    "quantity": 1,
+    "rates": {
+      "cutting": "1"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "cutting",
+          "amount": "2.42"
+        }
+      ],
+      "total": "2.42",
+      "missing": []
+    }
+  },
+  {
+    "name": "cutting 3dp sizes, 4dp rate",
+    "scheme": "cutting",
+    "length_ft": "2.125",
+    "width_ft": "1.875",
+    "cuts": 3,
+    "quantity": 7,
+    "rates": {
+      "cutting": "1.2345"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "cutting",
+          "amount": "206.59"
+        }
+      ],
+      "total": "206.59",
+      "missing": []
+    }
+  },
+  {
+    "name": "cutting rounds half up",
+    "scheme": "cutting",
+    "length_ft": "0.5",
+    "width_ft": "0.5",
+    "cuts": 1,
+    "quantity": 1,
+    "rates": {
+      "cutting": "4.69"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "cutting",
+          "amount": "2.35"
+        }
+      ],
+      "total": "2.35",
+      "missing": []
+    }
+  },
+  {
+    "name": "cutting zero cuts pays nothing",
+    "scheme": "cutting",
+    "length_ft": "2",
+    "width_ft": "2",
+    "cuts": 0,
+    "quantity": 10,
+    "rates": {
+      "cutting": "1.5"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "cutting",
+          "amount": "0.00"
+        }
+      ],
+      "total": "0.00",
+      "missing": []
+    }
+  },
+  {
+    "name": "cutting large batch",
+    "scheme": "cutting",
+    "length_ft": "3",
+    "width_ft": "2",
+    "cuts": 3,
+    "quantity": 5000,
+    "rates": {
+      "cutting": "1.75"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "cutting",
+          "amount": "315000.00"
+        }
+      ],
+      "total": "315000.00",
+      "missing": []
+    }
+  },
+  {
+    "name": "loading basic",
+    "scheme": "loading",
+    "length_ft": "2",
+    "width_ft": "3",
+    "cuts": 2,
+    "quantity": 5,
+    "rates": {
+      "loading": "0.5",
+      "unloading": "0.25"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "loading",
+          "amount": "15.00"
+        },
+        {
+          "component": "unloading",
+          "amount": "22.50"
+        }
+      ],
+      "total": "37.50",
+      "missing": []
+    }
+  },
+  {
+    "name": "loading zero cuts",
+    "scheme": "loading",
+    "length_ft": "2",
+    "width_ft": "2",
+    "cuts": 0,
+    "quantity": 1,
+    "rates": {
+      "loading": "1",
+      "unloading": "1"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "loading",
+          "amount": "4.00"
+        },
+        {
+          "component": "unloading",
+          "amount": "4.00"
+        }
+      ],
+      "total": "8.00",
+      "missing": []
+    }
+  },
+  {
+    "name": "loading decimals",
+    "scheme": "loading",
+    "length_ft": "2.5",
+    "width_ft": "1.333",
+    "cuts": 1,
+    "quantity": 9,
+    "rates": {
+      "loading": "0.333",
+      "unloading": "0.1667"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "loading",
+          "amount": "9.99"
+        },
+        {
+          "component": "unloading",
+          "amount": "10.00"
+        }
+      ],
+      "total": "19.99",
+      "missing": []
+    }
+  },
+  {
+    "name": "missing unloading rate",
+    "scheme": "loading",
+    "length_ft": "1",
+    "width_ft": "1",
+    "cuts": 1,
+    "quantity": 1,
+    "rates": {
+      "loading": "1",
+      "unloading": null
+    },
+    "expected": {
+      "lines": [],
+      "total": null,
+      "missing": [
+        "unloading"
+      ]
+    }
+  },
+  {
+    "name": "missing cutting rate",
+    "scheme": "cutting",
+    "length_ft": "1",
+    "width_ft": "1",
+    "cuts": 1,
+    "quantity": 1,
+    "rates": {
+      "cutting": null
+    },
+    "expected": {
+      "lines": [],
+      "total": null,
+      "missing": [
+        "cutting"
+      ]
+    }
+  }
+]

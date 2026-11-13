@@ -50,3 +50,11 @@ describe('errorMessage', () => {
     expect(errorMessage(new ApiError(400, 'mystery', 'Server says no'))).toBe('Server says no');
   });
 });
+
+describe('device data lifetime', () => {
+  it('stays below the browser timer limit (longer delays fire immediately)', async () => {
+    const { KEEP_DATA_MS, MAX_TIMER_MS } = await import('./cacheTime');
+    expect(KEEP_DATA_MS).toBeLessThan(MAX_TIMER_MS);
+    expect(KEEP_DATA_MS).toBeGreaterThanOrEqual(14 * 24 * 60 * 60 * 1000); // at least two weeks
+  });
+});

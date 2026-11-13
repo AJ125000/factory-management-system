@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -56,6 +57,8 @@ class WorkerTypeOut(Out):
 
 # --------------------------------------------------------------------- workers
 class WorkerCreate(In):
+    # Set by the device that created the record (see services/_common.py: existing_replay).
+    id: UUID | None = None
     name_en: Annotated[str, Field(min_length=1, max_length=120)]
     name_hi: Annotated[str, Field(max_length=120)] | None = None
     worker_type_id: str
@@ -97,6 +100,8 @@ class DeleteImpact(BaseModel):
 
 # ----------------------------------------------------------------------- rates
 class RateCreate(In):
+    # Set by the device that created the record (see services/_common.py: existing_replay).
+    id: UUID | None = None
     worker_type_id: str
     component: RateComponent
     rate_per_sqft: RateValue
@@ -130,6 +135,8 @@ class CurrentRateOut(BaseModel):
 
 # ------------------------------------------------------------------ production
 class ProductionCreate(In):
+    # Set by the device that created the record (see services/_common.py: existing_replay).
+    id: UUID | None = None
     worker_id: str
     entry_date: date
     length_ft: Dimension
@@ -209,6 +216,7 @@ class AppSettingsOut(BaseModel):
     ui_language: Language = "en"
     print_language: Language = "hi"
     pay_period: PayPeriod = "half_month"
+    phone_url: str = ""  # optional override of the detected Tailscale address
 
 
 class AppSettingsUpdate(In):
@@ -218,6 +226,7 @@ class AppSettingsUpdate(In):
     ui_language: Language | None = None
     print_language: Language | None = None
     pay_period: PayPeriod | None = None
+    phone_url: Annotated[str, Field(max_length=200, pattern=r"^(https?://\S+)?$")] | None = None
 
 
 # --------------------------------------------------------------------- reports

@@ -8,7 +8,7 @@ from ..models import ProductionEntry, Worker
 from ..schemas import WorkerCreate, WorkerUpdate
 from ..util import utcnow
 from . import audit
-from ._common import apply_changes
+from ._common import apply_changes, existing_replay
 from .worker_types import get_worker_type
 
 ENTITY = "worker"
@@ -65,13 +65,15 @@ def _check_duplicate_name(session: Session, name: str, exclude_id: str | None = 
 
 
 def create_worker(session: Session, data: WorkerCreate) -> Worker:
+    if replay := existing_replay(session, Worker, data.id):
+        return replay
     _check_type_usable(session, data.worker_type_id)
     if not data.allow_duplicate_name:
         _check_duplicate_name(session, data.name_en)
-    worker = Worker()
+    worker = Worker(id=str(data.id)) if data.id else Worker()
     apply_changes(
         worker,
-        data.model_dump(exclude={"allow_duplicate_name"}),
+        data.model_dump(exclude={"allow_duplicate_name", "id"}),
         blank_to_none=("name_hi", "phone", "notes"),
     )
     session.add(worker)
