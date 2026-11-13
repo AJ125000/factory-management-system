@@ -18,7 +18,7 @@ from ..schemas import (
 from ..util import today
 from ..wages import MissingRateError, RateComponent, StoneEntry, WageResult, calculate_wage
 from . import audit
-from ._common import apply_changes
+from ._common import apply_changes, existing_replay
 from .rates import RateBook
 
 ENTITY = "production_entry"
@@ -138,10 +138,14 @@ def _check_date(entry_date: date) -> None:
 
 
 def create_entry(session: Session, data: ProductionCreate) -> ProductionEntry:
+    if replay := existing_replay(session, ProductionEntry, data.id):
+        return replay
     worker = _usable_worker(session, data.worker_id)
     _check_date(data.entry_date)
     entry = ProductionEntry(worker_type_id=worker.worker_type_id)
-    apply_changes(entry, data.model_dump(), blank_to_none=("notes",))
+    if data.id:
+        entry.id = str(data.id)
+    apply_changes(entry, data.model_dump(exclude={"id"}), blank_to_none=("notes",))
     session.add(entry)
     session.flush()
     session.refresh(entry)

@@ -75,8 +75,12 @@ def _serve_frontend(app: FastAPI, static_dir: Path) -> None:
         candidate = (root / path).resolve()
         if path and candidate.is_file() and candidate.is_relative_to(root):
             # Built assets have content hashes in their names, so they can be cached forever.
-            cache = "public, max-age=31536000, immutable" if path.startswith("assets/") else None
-            return FileResponse(candidate, headers={"Cache-Control": cache} if cache else None)
+            # Everything else (sw.js, manifest, index.html, icons) must be re-checked, so a
+            # new version of the app reaches the phone as soon as the hub has it.
+            cache = (
+                "public, max-age=31536000, immutable" if path.startswith("assets/") else "no-cache"
+            )
+            return FileResponse(candidate, headers={"Cache-Control": cache})
         if "." in path.rsplit("/", 1)[-1]:
             # A missing *file* (e.g. favicon.ico, a stale asset) is a real 404, not a screen.
             raise HTTPException(status_code=404)

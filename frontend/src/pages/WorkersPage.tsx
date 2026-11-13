@@ -35,12 +35,14 @@ import {
   useArchiveWorker,
   useDeleteWorker,
   useSaveWorker,
-  useWorkers,
   useWorkerTypes,
 } from '../api/hooks';
+import { useWorkersWithPending } from '../api/pending';
 import type { Worker, WorkerInput } from '../api/types';
+import { notifyResult } from '../components/Sync';
 import { DateField, PageHeader, WorkerName, notifyError, notifySaved } from '../components/common';
 import { localName } from '../i18n';
+import { useHubState } from '../lib/hub';
 import { todayISO } from '../lib/format';
 
 export default function WorkersPage() {
@@ -49,8 +51,10 @@ export default function WorkersPage() {
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<Worker | null>(null);
   const [formOpen, form] = useDisclosure(false);
-  const workers = useWorkers(showArchived);
+  const workers = useWorkersWithPending(showArchived);
+  const pendingIds = workers.pendingIds;
   const archive = useArchiveWorker();
+  const { reachable } = useHubState();
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -68,10 +72,11 @@ export default function WorkersPage() {
 
   const toggleArchive = (w: Worker) =>
     archive.mutate(
-      { id: w.id, archive: !w.is_archived },
+      { id: w.id, archive: !w.is_archived, label: w.name_en },
       {
-        onSuccess: () =>
-          notifySaved(
+        onSuccess: (r) =>
+          notifyResult(
+            r,
             t(w.is_archived ? 'workers.restoredDone' : 'workers.archivedDone', { name: w.name_en }),
           ),
       },
@@ -183,9 +188,15 @@ export default function WorkersPage() {
                     </Table.Td>
                     <Table.Td>{w.phone ?? '—'}</Table.Td>
                     <Table.Td>
-                      <Badge color={w.is_archived ? 'gray' : 'teal'} variant="light">
-                        {w.is_archived ? t('workers.archived') : t('workers.active')}
-                      </Badge>
+                      {pendingIds.has(w.id) ? (
+                        <Badge color="orange" variant="light">
+                          {t('sync.pending')}
+                        </Badge>
+                      ) : (
+                        <Badge color={w.is_archived ? 'gray' : 'teal'} variant="light">
+                          {w.is_archived ? t('workers.archived') : t('workers.active')}
+                        </Badge>
+                      )}
                     </Table.Td>
                     <Table.Td>
                       <Menu position="bottom-end" withinPortal>
@@ -201,22 +212,38 @@ export default function WorkersPage() {
                           >
                             {t('common.edit')}
                           </Menu.Item>
-                          <Menu.Item
-                            leftSection={
-                              w.is_archived ? <IconArrowBackUp size={16} /> : <IconArchive size={16} />
-                            }
-                            onClick={() => toggleArchive(w)}
-                          >
-                            {w.is_archived ? t('workers.restore') : t('workers.archive')}
-                          </Menu.Item>
-                          <Menu.Divider />
-                          <Menu.Item
-                            color="red"
-                            leftSection={<IconTrash size={16} />}
-                            onClick={() => void confirmDelete(w)}
-                          >
-                            {t('common.delete')}
-                          </Menu.Item>
+                          {/* A worker not yet sent to the laptop can only be edited. */}
+                          {!pendingIds.has(w.id) && (
+                            <>
+                              <Menu.Item
+                                leftSection={
+                                  w.is_archived ? (
+                                    <IconArrowBackUp size={16} />
+                                  ) : (
+                                    <IconArchive size={16} />
+                                  )
+                                }
+                                onClick={() => toggleArchive(w)}
+                              >
+                                {w.is_archived ? t('workers.restore') : t('workers.archive')}
+                              </Menu.Item>
+                              <Menu.Divider />
+                              <Menu.Item
+                                color="red"
+                                leftSection={<IconTrash size={16} />}
+                                disabled={!reachable}
+                                title={reachable ? undefined : t('sync.needsLaptop')}
+                                onClick={() => void confirmDelete(w)}
+                              >
+                                {t('common.delete')}
+                                {!reachable && (
+                                  <Text size="xs" c="dimmed">
+                                    {t('sync.needsLaptop')}
+                                  </Text>
+                                )}
+                              </Menu.Item>
+                            </>
+                          )}
                         </Menu.Dropdown>
                       </Menu>
                     </Table.Td>
@@ -275,10 +302,10 @@ function WorkerForm({ worker, onDone }: { worker: Worker | null; onDone: () => v
       allow_duplicate_name: allowDuplicate,
     };
     save.mutate(
-      { id: worker?.id, body },
+      { id: worker?.id, body, label: values.name_en },
       {
-        onSuccess: () => {
-          notifySaved(t('common.saved'));
+        onSuccess: (r) => {
+          notifyResult(r, t('common.saved'));
           onDone();
         },
         onError: (e) => {

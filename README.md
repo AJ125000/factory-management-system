@@ -7,13 +7,34 @@ shows production reports, and prints wage slips in Hindi or English.
 ## How it runs
 
 The owner's **laptop is the hub**: it runs the FMS server and keeps the master
-database. The app opens in a browser window on the laptop (phone access and
-offline sync arrive in phase 4).
+database. The app opens in a browser on the laptop, and phones (or another PC)
+install it from the laptop's private Tailscale address.
+
+### Phones and offline use
+
+- The app installs to the phone's home screen and **opens without the laptop**
+  (a service worker keeps it on the device — `frontend/sw/sw-template.js`).
+- Every change goes into an **offline queue** on the device (`src/lib/outbox.ts`,
+  stored in IndexedDB) and is sent to the laptop in order as soon as it can be
+  reached. New records get their id on the device and the hub treats a repeated
+  create as already done, so retries can never duplicate anything.
+- Workers, rates and recent data are **kept on the device** (React Query, saved
+  to IndexedDB) so screens still show them offline, with the time they're from.
+- While offline, the wage preview is **calculated on the device** with a port of
+  the hub's formulas; `shared/wage-cases.json` is checked by both test suites so
+  they always agree to the paisa.
+- Needs the laptop: permanently deleting a worker, correcting/deleting a rate,
+  worker types and settings.
+
+**Connecting a phone:** Settings → *Connect a phone* shows a QR code and steps.
+On the laptop, Tailscale must be installed and the hub published once with
+`tailscale serve --bg 8765` (HTTPS is required for installing the app).
 
 | Folder | What it is |
 |---|---|
 | `backend/` | Hub server — Python 3.12, FastAPI, SQLite ([details](backend/README.md)) |
 | `frontend/` | The app — React, TypeScript, Mantine; English/Hindi |
+| `shared/` | Wage test cases both the hub and the app must pass |
 | `legacy/` | The original Tkinter prototype, kept for reference |
 | `assets/` | Icons |
 

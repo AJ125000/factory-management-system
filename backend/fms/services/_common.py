@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
+from sqlalchemy.orm import Session
+
 
 def apply_changes(
     obj: Any,
@@ -23,3 +25,15 @@ def apply_changes(
         if value == "" and field in blank_to_none:
             value = None
         setattr(obj, field, value)
+
+
+def existing_replay[T](session: Session, model: type[T], record_id: object) -> T | None:
+    """The record a device already created with this id, if any.
+
+    Devices create records with their own ids and may send the same change twice
+    (e.g. the connection dropped before they saw the reply). A repeat is answered with
+    the existing record instead of creating a duplicate or failing.
+    """
+    if record_id is None:
+        return None
+    return session.get(model, str(record_id))

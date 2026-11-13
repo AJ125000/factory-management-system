@@ -26,6 +26,8 @@ import { NavLink as RouterLink, Outlet, useLocation } from 'react-router';
 import { useSettings, useUpdateSettings } from '../api/hooks';
 import type { Language } from '../api/types';
 import { localName, setUiLanguage } from '../i18n';
+import { ScreenBoundary } from './ScreenBoundary';
+import { OfflineBanner, SyncStatus, UpdateBanner } from './Sync';
 
 const LINKS = [
   { to: '/dashboard', key: 'nav.dashboard', icon: IconLayoutDashboard },
@@ -87,7 +89,10 @@ export default function AppLayout() {
               </Text>
             </div>
           </Group>
-          <LanguageToggle />
+          <Group gap="xs" wrap="nowrap">
+            <SyncStatus />
+            <LanguageToggle />
+          </Group>
         </Group>
       </AppShell.Header>
 
@@ -107,15 +112,19 @@ export default function AppLayout() {
       </AppShell.Navbar>
 
       <AppShell.Main>
-        <Suspense
-          fallback={
-            <Center py="xl">
-              <Loader />
-            </Center>
-          }
-        >
-          <Outlet />
-        </Suspense>
+        <UpdateBanner />
+        <OfflineBanner />
+        <ScreenBoundary key={pathname}>
+          <Suspense
+            fallback={
+              <Center py="xl">
+                <Loader />
+              </Center>
+            }
+          >
+            <Outlet />
+          </Suspense>
+        </ScreenBoundary>
       </AppShell.Main>
     </AppShell>
   );

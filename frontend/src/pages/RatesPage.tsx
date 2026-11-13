@@ -23,7 +23,9 @@ import { useTranslation } from 'react-i18next';
 import { useCurrentRates, useDeleteRate, useRates, useSaveRate, useWorkerTypes } from '../api/hooks';
 import type { Rate, RateComponent, WorkerType } from '../api/types';
 import { DateField, PageHeader, notifySaved } from '../components/common';
+import { notifyResult } from '../components/Sync';
 import { localName } from '../i18n';
+import { useHubState } from '../lib/hub';
 import { formatDate, formatRate, todayISO } from '../lib/format';
 
 export const SCHEME_COMPONENTS: Record<WorkerType['pay_scheme'], RateComponent[]> = {
@@ -42,6 +44,7 @@ export default function RatesPage() {
   const rates = useRates();
   const current = useCurrentRates();
   const remove = useDeleteRate();
+  const { reachable } = useHubState();
   const [dialog, setDialog] = useState<Dialog>(null);
 
   const confirmDelete = (rate: Rate) =>
@@ -142,6 +145,8 @@ export default function RatesPage() {
                                 variant="subtle"
                                 color="gray"
                                 aria-label={t('rates.correct')}
+                                disabled={!reachable}
+                                title={reachable ? t('rates.correct') : t('sync.needsLaptop')}
                                 onClick={() => setDialog({ kind: 'correct', type: wt, rate: r })}
                               >
                                 <IconPencil size={16} />
@@ -150,6 +155,8 @@ export default function RatesPage() {
                                 variant="subtle"
                                 color="red"
                                 aria-label={t('common.delete')}
+                                disabled={!reachable}
+                                title={reachable ? t('common.delete') : t('sync.needsLaptop')}
                                 onClick={() => confirmDelete(r)}
                               >
                                 <IconTrash size={16} />
@@ -201,13 +208,14 @@ function RateForm({ dialog, onDone }: { dialog: NonNullable<Dialog>; onDone: () 
   const submit = () => {
     if (!valid) return;
     const common = { rate_per_sqft: String(rate), effective_from: from!, note: note || null };
+    const label = `${dialog.type.name_en} · ${t(`components.${component}`)} ₹${rate} · ${formatDate(from, 'short')}`;
     save.mutate(
       existing
-        ? { id: existing.id, body: common }
-        : { body: { ...common, worker_type_id: dialog.type.id, component } },
+        ? { id: existing.id, body: common, label }
+        : { body: { ...common, worker_type_id: dialog.type.id, component }, label },
       {
-        onSuccess: () => {
-          notifySaved(t('common.saved'));
+        onSuccess: (r) => {
+          notifyResult(r, t('common.saved'));
           onDone();
         },
       },

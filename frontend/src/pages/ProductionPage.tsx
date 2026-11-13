@@ -30,29 +30,59 @@ import {
   useDeleteEntry,
   useProduction,
   useSaveEntry,
+  useRates,
   useSettings,
-  useWorkers,
 } from '../api/hooks';
-import type { ProductionEntry, ProductionInput, RateComponent, Worker } from '../api/types';
+import { useWorkersWithPending } from '../api/pending';
+import type {
+  ProductionEntry,
+  ProductionInput,
+  Rate,
+  RateComponent,
+  WagePreview,
+  Worker,
+} from '../api/types';
+import { PendingForEntity, notifyResult } from '../components/Sync';
 import {
   DateField,
   PageHeader,
   PeriodPicker,
   WorkerName,
-  notifySaved,
   periodFromPreset,
   workerOptions,
   type PeriodValue,
 } from '../components/common';
 import { formatDate, formatFeet, formatMoney, formatNumber, todayISO } from '../lib/format';
+import { useHubState } from '../lib/hub';
 import { defaultPreset } from '../lib/periods';
+import { calculateWage, ratesFor, totalArea } from '../lib/wages';
+
+/** How a change is described in the "waiting to sync" list. */
+function entryLabel(
+  e: Pick<ProductionEntry, 'entry_date' | 'length_ft' | 'width_ft' | 'quantity'>,
+  w: Worker | undefined,
+): string {
+  return `${w?.name_en ?? '?'} · ${formatDate(e.entry_date, 'short')} · ${formatFeet(e.length_ft)} × ${formatFeet(e.width_ft)} ft × ${e.quantity}`;
+}
+
+/** The wage preview worked out on this device (same formulas as the hub, tested to match). */
+function localPreview(input: ProductionInput, worker: Worker, rates: Rate[]): WagePreview {
+  const scheme = worker.worker_type.pay_scheme;
+  const result = calculateWage(scheme, input, ratesFor(rates, worker.worker_type_id, scheme, input.entry_date));
+  return {
+    area_sqft: totalArea(input),
+    wage: result.total,
+    wage_lines: [],
+    missing_rates: result.missing,
+  };
+}
 
 const PAGE_SIZE = 50;
 
 export default function ProductionPage() {
   const { t, i18n } = useTranslation();
   const settings = useSettings().data;
-  const allWorkers = useWorkers(true);
+  const allWorkers = useWorkersWithPending(true);
   const byId = useMemo(
     () => new Map((allWorkers.data ?? []).map((w) => [w.id, w])),
     [allWorkers.data],
@@ -72,6 +102,7 @@ export default function ProductionPage() {
     offset: (page - 1) * PAGE_SIZE,
   });
   const remove = useDeleteEntry();
+  const { reachable } = useHubState();
 
   const confirmDelete = (e: ProductionEntry) => {
     const w = byId.get(e.worker_id);
@@ -88,7 +119,11 @@ export default function ProductionPage() {
       ),
       labels: { confirm: t('common.delete'), cancel: t('common.cancel') },
       confirmProps: { color: 'red' },
-      onConfirm: () => remove.mutate(e.id, { onSuccess: () => notifySaved(t('common.deleted')) }),
+      onConfirm: () =>
+        remove.mutate(
+          { id: e.id, label: entryLabel(e, w) },
+          { onSuccess: (r) => notifyResult(r, t('common.deleted')) },
+        ),
     });
   };
 
@@ -104,6 +139,8 @@ export default function ProductionPage() {
         </Title>
         <EntryForm workers={(allWorkers.data ?? []).filter((w) => !w.is_archived)} />
       </Card>
+
+      <PendingForEntity entity="production" />
 
       <Card withBorder>
         <Group justify="space-between" align="flex-end" mb="md" wrap="wrap">
@@ -129,12 +166,19 @@ export default function ProductionPage() {
               }}
             />
           </Group>
-          <Text size="sm" c="dimmed">
-            {t('production.count', { count: total })}
-          </Text>
+          {entries.data && (
+            <Text size="sm" c="dimmed">
+              {t('production.count', { count: total })}
+            </Text>
+          )}
         </Group>
 
-        {entries.isSuccess && total === 0 ? (
+        {!entries.data && !reachable ? (
+          // The laptop is away and this list was never saved on this device.
+          <Text c="dimmed" ta="center" py="xl">
+            {t('sync.notOnDevice')}
+          </Text>
+        ) : entries.isSuccess && total === 0 ? (
           <Text c="dimmed" ta="center" py="xl">
             {t('production.noEntries')}
           </Text>
@@ -279,6 +323,8 @@ function EntryForm({
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setValues((v) => ({ ...v, [key]: value }));
 
+  const { reachable } = useHubState();
+  const rates = useRates().data;
   const input = toInput(values);
   const [debounced] = useDebouncedValue(input, 250);
   const preview = useQuery({
@@ -287,21 +333,34 @@ function EntryForm({
       const { notes: _notes, ...body } = debounced!;
       return previewWage(body);
     },
-    enabled: debounced !== null,
+    enabled: debounced !== null && reachable,
     meta: { silent: true },
     staleTime: 0,
   });
-  const shownPreview = input && debounced && preview.data ? preview.data : null;
+  const worker = workers.find((w) => w.id === input?.worker_id);
+  const devicePreview = useMemo(
+    () => (!reachable && input && worker && rates ? localPreview(input, worker, rates) : null),
+    [reachable, input, worker, rates],
+  );
+  const shownPreview = reachable
+    ? input && debounced && preview.data
+      ? preview.data
+      : null
+    : devicePreview;
 
   const submit = () => {
     if (!input) return;
-    const workerName = workers.find((w) => w.id === input.worker_id)?.name_en ?? '';
+    const w = workers.find((x) => x.id === input.worker_id);
     save.mutate(
-      { id: entry?.id, body: input },
+      { id: entry?.id, body: input, label: entryLabel({ ...input, quantity: input.quantity }, w) },
       {
-        onSuccess: (saved) => {
-          notifySaved(
-            t('production.savedFor', { name: workerName, wage: formatMoney(saved.wage) }),
+        onSuccess: (result) => {
+          notifyResult(
+            result,
+            t('production.savedFor', {
+              name: w?.name_en ?? '',
+              wage: formatMoney(result.data?.wage ?? null),
+            }),
           );
           if (onDone) onDone();
           else {
@@ -396,6 +455,12 @@ function EntryForm({
                 {shownPreview.wage !== null && (
                   <Text size="lg" fw={700}>
                     {t('production.wage')}: {formatMoney(shownPreview.wage)}
+                    {!reachable && (
+                      <Text span size="xs" c="dimmed" fw={400}>
+                        {' '}
+                        ({t('sync.deviceCalc')})
+                      </Text>
+                    )}
                   </Text>
                 )}
               </Group>
