@@ -4,7 +4,14 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from ..db import get_session
-from ..schemas import ProductionCreate, ProductionOut, ProductionPage, ProductionUpdate
+from ..schemas import (
+    ProductionCreate,
+    ProductionOut,
+    ProductionPage,
+    ProductionUpdate,
+    WagePreviewIn,
+    WagePreviewOut,
+)
 from ..services import production as svc
 from ..services.rates import RateBook
 
@@ -30,6 +37,12 @@ def create_entry(data: ProductionCreate, session: Session = Depends(get_session)
     entry = svc.create_entry(session, data)
     session.commit()
     return svc.to_out(entry, RateBook.load(session))
+
+
+@router.post("/preview", response_model=WagePreviewOut)
+def preview(data: WagePreviewIn, session: Session = Depends(get_session)):
+    """The wage an entry would earn, without saving it."""
+    return svc.preview_wage(session, data)
 
 
 @router.get("/{entry_id}", response_model=ProductionOut)

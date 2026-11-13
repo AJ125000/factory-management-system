@@ -1,0 +1,15 @@
+/* Numbers in tables line up when digits have equal width. */
+.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.clickable-row {
+  cursor: pointer;
+}
+
+/* Hindi text needs a little more line height for the vowel marks. */
+:lang(hi) body {
+  line-height: 1.6;
+}

@@ -179,6 +179,47 @@ class ProductionPage(BaseModel):
     items: list[ProductionOut]
 
 
+class WagePreviewIn(In):
+    worker_id: str
+    entry_date: date
+    length_ft: Dimension
+    width_ft: Dimension
+    cuts: Cuts
+    quantity: Quantity
+
+
+class WagePreviewOut(BaseModel):
+    area_sqft: Decimal
+    wage: Decimal | None
+    wage_lines: list[WageLineOut]
+    missing_rates: list[RateComponent]
+
+
+# -------------------------------------------------------------------- settings
+Language = Literal["en", "hi"]
+PayPeriod = Literal["half_month", "month"]
+
+
+class AppSettingsOut(BaseModel):
+    """Owner preferences. Every key has a default, so a fresh install works immediately."""
+
+    factory_name_en: str = "Kota Stone Factory"
+    factory_name_hi: str = "कोटा स्टोन फैक्ट्री"
+    factory_address: str = ""
+    ui_language: Language = "en"
+    print_language: Language = "hi"
+    pay_period: PayPeriod = "half_month"
+
+
+class AppSettingsUpdate(In):
+    factory_name_en: Annotated[str, Field(min_length=1, max_length=120)] | None = None
+    factory_name_hi: Annotated[str, Field(max_length=120)] | None = None
+    factory_address: Annotated[str, Field(max_length=300)] | None = None
+    ui_language: Language | None = None
+    print_language: Language | None = None
+    pay_period: PayPeriod | None = None
+
+
 # --------------------------------------------------------------------- reports
 class WorkerWagesOut(BaseModel):
     worker_id: str

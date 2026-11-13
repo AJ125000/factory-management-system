@@ -30,6 +30,7 @@ class Settings:
     # Localhost only until owner login and device pairing land (phases 4-5).
     host: str = "127.0.0.1"
     port: int = 8765
+    static_dir: Path = Path(__file__).parent / "static"
 
     @property
     def db_path(self) -> Path:

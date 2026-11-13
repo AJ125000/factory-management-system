@@ -6,8 +6,15 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..errors import Conflict, Invalid, NotFound
-from ..models import ProductionEntry, Worker
-from ..schemas import ProductionCreate, ProductionOut, ProductionUpdate, WageLineOut
+from ..models import ProductionEntry, Worker, WorkerType
+from ..schemas import (
+    ProductionCreate,
+    ProductionOut,
+    ProductionUpdate,
+    WageLineOut,
+    WagePreviewIn,
+    WagePreviewOut,
+)
 from ..util import today
 from ..wages import MissingRateError, RateComponent, StoneEntry, WageResult, calculate_wage
 from . import audit
@@ -18,35 +25,60 @@ ENTITY = "production_entry"
 
 
 # ------------------------------------------------------------------ wages
+def _wage(
+    worker_type: WorkerType, entry_date: date, stone: StoneEntry, book: RateBook
+) -> tuple[WageResult | None, list[RateComponent]]:
+    rates = book.rates_for(worker_type.id, worker_type.pay_scheme, entry_date)
+    try:
+        return calculate_wage(worker_type.pay_scheme, stone, rates), []
+    except MissingRateError as exc:
+        return None, exc.components
+
+
 def entry_wage(
     entry: ProductionEntry, book: RateBook
 ) -> tuple[WageResult | None, list[RateComponent]]:
     """The wage for one entry at the rates in effect on its date, or the missing components."""
-    scheme = entry.worker_type.pay_scheme
-    rates = book.rates_for(entry.worker_type_id, scheme, entry.entry_date)
     stone = StoneEntry(entry.length_ft, entry.width_ft, entry.cuts, entry.quantity)
-    try:
-        return calculate_wage(scheme, stone, rates), []
-    except MissingRateError as exc:
-        return None, exc.components
+    return _wage(entry.worker_type, entry.entry_date, stone, book)
+
+
+def _lines_out(result: WageResult | None) -> list[WageLineOut]:
+    if result is None:
+        return []
+    return [
+        WageLineOut(
+            component=line.component,
+            effective_area_sqft=line.effective_area,
+            rate_per_sqft=line.rate,
+            amount=line.amount,
+        )
+        for line in result.lines
+    ]
 
 
 def to_out(entry: ProductionEntry, book: RateBook) -> ProductionOut:
     result, missing = entry_wage(entry, book)
     out = ProductionOut.model_validate(entry)
     out.missing_rates = missing
-    if result is not None:
-        out.wage = result.total
-        out.wage_lines = [
-            WageLineOut(
-                component=line.component,
-                effective_area_sqft=line.effective_area,
-                rate_per_sqft=line.rate,
-                amount=line.amount,
-            )
-            for line in result.lines
-        ]
+    out.wage = result.total if result else None
+    out.wage_lines = _lines_out(result)
     return out
+
+
+def preview_wage(session: Session, data: WagePreviewIn) -> WagePreviewOut:
+    """What an entry would pay, without saving it (live preview while typing)."""
+    worker = session.get(Worker, data.worker_id)
+    if worker is None:
+        raise Invalid("Unknown worker", worker_id=data.worker_id)
+    stone = StoneEntry(data.length_ft, data.width_ft, data.cuts, data.quantity)
+    result, missing = _wage(worker.worker_type, data.entry_date, stone, RateBook.load(session))
+    return WagePreviewOut(
+        area_sqft=stone.total_area,
+        wage=result.total if result else None,
+        wage_lines=_lines_out(result),
+        missing_rates=missing,
+    )
 
 
 # ------------------------------------------------------------------ queries
