@@ -4,7 +4,7 @@ All measurements are in feet and square feet, all rates in rupees per square foo
 Money uses Decimal (never float). Each wage line is rounded to the paisa (half-up),
 and an entry's total is the sum of its rounded lines.
 
-Formulas (carried over from the prototype):
+Formulas (carried over from the prototype; the 2 x in cutting confirmed by the owner, Nov 2026):
 
 * Cutting (machine operator):
       2 x piece_area x cuts x quantity x cutting_rate
