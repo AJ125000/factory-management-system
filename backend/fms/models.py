@@ -171,6 +171,32 @@ class AuditLog(Base):
     after: Mapped[str | None] = mapped_column(Text)
 
 
+class OwnerAccount(TimestampMixin, Base):
+    """The one owner login. Only a hash of the password is stored (scrypt, salted)."""
+
+    __tablename__ = "owner_account"
+
+    id: Mapped[int] = mapped_column(primary_key=True)  # always 1
+    password_hash: Mapped[str] = mapped_column(String(200))
+
+
+class DeviceSession(Base):
+    """A device (laptop, phone, PC) the owner has logged in on.
+
+    Devices stay logged in — phones may be offline for weeks — until the owner signs
+    them out (e.g. a lost phone). Only a hash of each device's token is stored.
+    """
+
+    __tablename__ = "device_sessions"
+
+    id: Mapped[str] = _id_column()
+    name: Mapped[str] = mapped_column(String(80))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
 class AppSetting(Base):
     __tablename__ = "app_settings"
 

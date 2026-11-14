@@ -1,5 +1,6 @@
 /** Thin fetch wrapper. Backend errors look like {"error": {code, message, details}}. */
 
+import { authToken, clearAuthToken } from '../lib/auth';
 import { markReachable, markUnreachable } from '../lib/hub';
 
 const GATEWAY_ERRORS = new Set([502, 503, 504]);
@@ -51,16 +52,21 @@ async function parseError(resp: Response): Promise<ApiError> {
   return new ApiError(resp.status, 'error', `Request failed (${resp.status})`);
 }
 
-export async function api<T>(
+async function send(
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   path: string,
-  options: { body?: unknown; params?: Params } = {},
-): Promise<T> {
+  options: { body?: unknown; params?: Params },
+): Promise<Response> {
+  const headers: Record<string, string> = {};
+  if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+  const token = authToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
   let resp: Response;
   try {
     resp = await fetch(buildUrl(path, options.params), {
       method,
-      headers: options.body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+      headers,
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       signal: AbortSignal.timeout(20_000),
     });
@@ -74,7 +80,41 @@ export async function api<T>(
     throw new ApiError(0, 'offline', 'Cannot reach the FMS server. Is it running?');
   }
   markReachable();
-  if (!resp.ok) throw await parseError(resp);
+  if (!resp.ok) {
+    const error = await parseError(resp);
+    // The hub no longer accepts this device (signed out elsewhere, or logged out):
+    // forget the login so the app shows the login screen. Waiting changes are kept.
+    if (resp.status === 401 && error.reason === 'login_required') clearAuthToken();
+    throw error;
+  }
+  return resp;
+}
+
+export async function api<T>(
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  path: string,
+  options: { body?: unknown; params?: Params } = {},
+): Promise<T> {
+  const resp = await send(method, path, options);
   if (resp.status === 204) return undefined as T;
   return (await resp.json()) as T;
+}
+
+/**
+ * Download a file (e.g. an Excel export) with this device's login attached, and hand
+ * it to the browser to save. A plain link can't carry the login, and putting the
+ * token in the address would leave it in the server's logs.
+ */
+export async function downloadFile(path: string, params: Params, fallbackName: string) {
+  const resp = await send('GET', path, { params });
+  const disposition = resp.headers.get('Content-Disposition') ?? '';
+  const name = /filename="([^"]+)"/.exec(disposition)?.[1] ?? fallbackName;
+  const url = URL.createObjectURL(await resp.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }

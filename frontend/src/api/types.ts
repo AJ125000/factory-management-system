@@ -157,3 +157,17 @@ export interface ConnectInfo {
   phone_url: string | null;
   hub_port: number;
 }
+
+export interface DeviceInfo {
+  id: string;
+  name: string;
+  created_at: string;
+  last_seen_at: string;
+  current: boolean;
+}
+
+export interface AuthStatus {
+  setup_required: boolean;
+  logged_in: boolean;
+  device: DeviceInfo | null;
+}

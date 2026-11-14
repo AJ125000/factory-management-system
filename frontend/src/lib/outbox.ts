@@ -185,8 +185,12 @@ async function flushOnce(): Promise<void> {
         applied++;
         waiters.get(item.id)?.resolve({ queued: false, data });
       } catch (error) {
-        if (error instanceof ApiError && error.code === 'offline') {
-          // The hub went away: keep this and everything after it for later.
+        const paused =
+          error instanceof ApiError &&
+          (error.code === 'offline' || (error.status === 401 && error.reason === 'login_required'));
+        if (paused) {
+          // The hub went away (or this device must log in again): keep this and
+          // everything after it, and send them later.
           for (const id of waiters.keys()) waiters.get(id)?.resolve({ queued: true, data: null });
           waiters.clear();
           break;
@@ -247,4 +251,11 @@ export function useOutbox(): OutboxItem[] {
     },
     () => items,
   );
+}
+
+/** Remove every waiting change from this device (used when logging out). */
+export async function clearOutbox() {
+  items = [];
+  emit();
+  await persist();
 }

@@ -7,14 +7,20 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.exc import IntegrityError
+from starlette.concurrency import run_in_threadpool
 
 from . import __version__
 from .api import router
+from .api.auth import bearer_token
 from .config import Settings
 from .db import make_engine, make_session_factory, run_migrations
 from .errors import FMSError
+from .services import auth
 
 log = logging.getLogger("fms")
+
+# The only API paths that work without logging in.
+PUBLIC_API = frozenset({"/api/health", "/api/auth/status", "/api/auth/setup", "/api/auth/login"})
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -33,7 +39,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = make_session_factory(engine)
+    app.state.login_throttle = auth.LoginThrottle()
     app.include_router(router)
+
+    def _logged_in_device(token: str) -> str | None:
+        with app.state.session_factory() as session:
+            device = auth.device_for_token(session, token)
+            if device is None:
+                return None
+            auth.touch(session, device)
+            return device.id
+
+    @app.middleware("http")
+    async def _require_login(request: Request, call_next):
+        """Every /api request needs a logged-in device, except the few listed in PUBLIC_API."""
+        path = request.url.path
+        if (path == "/api" or path.startswith("/api/")) and path not in PUBLIC_API:
+            token = bearer_token(request)
+            device_id = await run_in_threadpool(_logged_in_device, token) if token else None
+            if device_id is None:
+                return JSONResponse(
+                    status_code=401,
+                    content={
+                        "error": {
+                            "code": "unauthorized",
+                            "message": "Please log in.",
+                            "details": {"reason": "login_required"},
+                        }
+                    },
+                )
+            request.state.device_id = device_id
+        return await call_next(request)
 
     @app.exception_handler(FMSError)
     async def _domain_error(_request: Request, exc: FMSError) -> JSONResponse:

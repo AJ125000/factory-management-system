@@ -6,6 +6,7 @@ import { Navigate, Route, Routes } from 'react-router';
 
 import { useSettings } from './api/hooks';
 import AppLayout from './components/AppLayout';
+import { AuthGate } from './components/AuthGate';
 import { setUiLanguage } from './i18n';
 
 // Each screen loads on first visit, so the app starts fast and the chart
@@ -64,8 +65,9 @@ export default function App() {
 
   return (
     <DatesProvider settings={{ locale: i18n.language, firstDayOfWeek: 1 }}>
-      <Suspense fallback={<PageLoader />}>
-        <Routes>
+      <AuthGate>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
           <Route path="/print/wages" element={<PrintSlipsPage />} />
           <Route path="/print/production" element={<PrintReportPage />} />
           <Route element={<AppLayout />}>
@@ -79,8 +81,9 @@ export default function App() {
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
-        </Routes>
-      </Suspense>
+          </Routes>
+        </Suspense>
+      </AuthGate>
     </DatesProvider>
   );
 }

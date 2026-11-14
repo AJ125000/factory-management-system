@@ -27,9 +27,11 @@ import { ApiError } from './api/client';
 import { prefetchEssentials } from './api/hooks';
 import i18n from './i18n';
 import { KEEP_DATA_MS } from './lib/cacheTime';
+import { authToken, subscribeAuth } from './lib/auth';
 import { errorMessage } from './lib/errors';
 import { startHubWatch } from './lib/hub';
 import { flush, loadOutbox, setOnApplied } from './lib/outbox';
+import { startIdleLock } from './lib/pin';
 import { registerServiceWorker } from './lib/serviceWorker';
 import { theme } from './theme';
 
@@ -41,8 +43,9 @@ declare module '@tanstack/react-query' {
 }
 
 function showError(error: Error) {
-  // "Laptop not reachable" is shown once in the header, not as a pop-up per request.
-  if (error instanceof ApiError && error.code === 'offline') return;
+  // "Laptop not reachable" is shown once in the header, not as a pop-up per request;
+  // a device that must log in again is sent to the login screen instead.
+  if (error instanceof ApiError && (error.code === 'offline' || error.status === 401)) return;
   notifications.show({ color: 'red', title: i18n.t('app.error'), message: errorMessage(error) });
 }
 
@@ -91,14 +94,26 @@ try {
 const refreshAll = () => void queryClient.invalidateQueries();
 // Workers, rates, etc. are fetched up front so entry works offline even for screens
 // the owner hasn't opened yet.
-setOnApplied(refreshAll);
-void loadOutbox().then(() => flush());
-prefetchEssentials(queryClient);
-startHubWatch(() => {
+// Only while logged in: before that, the hub would (rightly) refuse every request.
+const whenLoggedIn = () => {
+  if (!authToken()) return;
   void flush();
-  refreshAll();
   prefetchEssentials(queryClient);
+};
+setOnApplied(refreshAll);
+void loadOutbox().then(whenLoggedIn);
+subscribeAuth(() => {
+  // Logging in sends any changes kept on this device and loads fresh data.
+  if (authToken()) {
+    whenLoggedIn();
+    refreshAll();
+  }
 });
+startHubWatch(() => {
+  whenLoggedIn();
+  refreshAll();
+});
+startIdleLock();
 registerServiceWorker();
 
 // Ask the browser not to clear our stored data under storage pressure (matters on phones).
@@ -116,7 +131,8 @@ createRoot(document.getElementById('root')!).render(
           dehydrateOptions: {
             // Keep anything that has data — including data whose last refresh failed
             // because the laptop was away (it's still the latest the device has).
-            shouldDehydrateQuery: (q) => q.state.data !== undefined && q.queryKey[0] !== 'preview',
+            shouldDehydrateQuery: (q) =>
+              q.state.data !== undefined && !['preview', 'auth'].includes(String(q.queryKey[0])),
           },
         }}
       >

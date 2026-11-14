@@ -274,3 +274,43 @@ class ProductionSummaryOut(BaseModel):
     group_by: GroupBy
     buckets: list[ProductionBucketOut]
     totals: ProductionBucketOut
+
+
+# ------------------------------------------------------------------------ auth
+Password = Annotated[str, Field(min_length=1, max_length=200)]
+DeviceName = Annotated[str, Field(min_length=1, max_length=80)]
+
+
+class SetupIn(In):
+    password: Password
+    device_name: DeviceName
+
+
+class LoginIn(In):
+    password: Password
+    device_name: DeviceName
+
+
+class PasswordChangeIn(In):
+    current_password: Password
+    new_password: Password
+    sign_out_other_devices: bool = False
+
+
+class DeviceOut(Out):
+    id: str
+    name: str
+    created_at: datetime
+    last_seen_at: datetime
+    current: bool = False
+
+
+class LoginOut(BaseModel):
+    token: str
+    device: DeviceOut
+
+
+class AuthStatusOut(BaseModel):
+    setup_required: bool
+    logged_in: bool
+    device: DeviceOut | None = None

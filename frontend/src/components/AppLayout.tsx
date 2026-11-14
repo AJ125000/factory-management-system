@@ -26,6 +26,7 @@ import { NavLink as RouterLink, Outlet, useLocation } from 'react-router';
 import { useSettings, useUpdateSettings } from '../api/hooks';
 import type { Language } from '../api/types';
 import { localName, setUiLanguage } from '../i18n';
+import { authToken } from '../lib/auth';
 import { ScreenBoundary } from './ScreenBoundary';
 import { OfflineBanner, SyncStatus, UpdateBanner } from './Sync';
 
@@ -49,7 +50,8 @@ export function LanguageToggle() {
       onChange={(value) => {
         const lang = value as Language;
         setUiLanguage(lang);
-        update.mutate({ ui_language: lang });
+        // Before logging in (login screen) the choice is kept on this device only.
+        if (authToken()) update.mutate({ ui_language: lang });
       }}
       data={[
         { value: 'en', label: 'EN' },

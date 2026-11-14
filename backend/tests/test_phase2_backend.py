@@ -56,7 +56,8 @@ def test_serves_frontend_with_spa_fallback(tmp_path):
         assert "immutable" in asset.headers["cache-control"]
         (static / "sw.js").write_text("// sw")
         assert c.get("/sw.js").headers["cache-control"] == "no-cache"  # updates reach phones
-        assert c.get("/api/does-not-exist").status_code == 404
+        # Unknown API paths reveal nothing to a device that isn't logged in.
+        assert c.get("/api/does-not-exist").status_code == 401
         assert c.get("/api/health").json()["status"] == "ok"
         # Path traversal must never escape the static folder.
         assert "nope" not in c.get("/..%2Fsecret.txt").text

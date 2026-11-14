@@ -20,6 +20,7 @@ import { useTranslation } from 'react-i18next';
 import { useSaveWorkerType, useSettings, useUpdateSettings, useWorkerTypes } from '../api/hooks';
 import type { AppSettings, Language, PayPeriod, PayScheme, WorkerType } from '../api/types';
 import { ConnectPhone } from '../components/ConnectPhone';
+import { SecuritySettings } from '../components/SecuritySettings';
 import { PageHeader, notifySaved } from '../components/common';
 import { localName, setUiLanguage } from '../i18n';
 import { useHubState } from '../lib/hub';
@@ -31,6 +32,7 @@ export default function SettingsPage() {
       <PageHeader title={t('settings.title')} />
       <Stack gap="lg" maw={900}>
         <FactorySettings />
+        <SecuritySettings />
         <ConnectPhone />
         <WorkerTypes />
       </Stack>

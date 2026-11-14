@@ -95,5 +95,6 @@ def test_edits_are_audited(api, client):
     w = api.worker("Ganesh")
     api.ok(api.c.patch(f"/api/workers/{w['id']}", json={"phone": "9876543210"}))
     with client.app.state.session_factory() as s:
-        actions = [a.action for a in s.scalars(select(AuditLog).order_by(AuditLog.id))]
+        worker_changes = select(AuditLog).where(AuditLog.entity == "worker").order_by(AuditLog.id)
+        actions = [a.action for a in s.scalars(worker_changes)]
     assert actions == ["create", "update"]

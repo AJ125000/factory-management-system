@@ -13,6 +13,8 @@ import { newId, submit } from '../lib/outbox';
 import { api } from './client';
 import type {
   AppSettings,
+  AuthStatus,
+  DeviceInfo,
   ConnectInfo,
   CurrentRate,
   ISODate,
@@ -306,23 +308,60 @@ export function useProductionSummary(
   });
 }
 
-/** Link that downloads an Excel export (the browser handles the file save). */
-export function exportUrl(
-  kind: 'wages' | 'production',
-  params: Record<string, string | string[] | undefined>,
-): string {
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value === undefined || value === '') continue;
-    if (Array.isArray(value)) value.forEach((v) => search.append(key, v));
-    else search.append(key, value);
-  }
-  return `/api/exports/${kind}.xlsx?${search}`;
-}
 
 export function useConnectInfo() {
   return useQuery({
     queryKey: [...keys.settings, 'connect'],
     queryFn: () => api<ConnectInfo>('GET', '/connect-info'),
   });
+}
+
+// ----------------------------------------------------------------------- auth
+export function useAuthStatus() {
+  return useQuery({
+    queryKey: ['auth', 'status'],
+    queryFn: () => api<AuthStatus>('GET', '/auth/status'),
+    networkMode: 'always', // try even while the laptop seems away: this is how we find out
+    retry: 0,
+    meta: { silent: true },
+  });
+}
+
+/** First-time setup or a normal login; returns this device's new login token. */
+export function requestLogin(kind: 'setup' | 'login', password: string, deviceName: string) {
+  return api<{ token: string; device: DeviceInfo }>('POST', `/auth/${kind}`, {
+    body: { password, device_name: deviceName },
+  });
+}
+
+export function useDevices() {
+  return useQuery({
+    queryKey: ['auth', 'devices'],
+    queryFn: () => api<DeviceInfo[]>('GET', '/auth/devices'),
+  });
+}
+
+export function useSignOutDevice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api<void>('DELETE', `/auth/devices/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['auth', 'devices'] }),
+  });
+}
+
+export function useChangePassword() {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { handlesErrors: true },
+    mutationFn: (body: {
+      current_password: string;
+      new_password: string;
+      sign_out_other_devices: boolean;
+    }) => api<{ signed_out_devices: number }>('POST', '/auth/password', { body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['auth', 'devices'] }),
+  });
+}
+
+export function requestLogout() {
+  return api<void>('POST', '/auth/logout');
 }

@@ -9,13 +9,26 @@ from fastapi.testclient import TestClient
 from fms.config import Settings
 from fms.main import create_app
 
+OWNER_PASSWORD = "owner-pass-123"
+
 
 @pytest.fixture
-def client(tmp_path) -> Iterator[TestClient]:
-    """A fresh app with its own empty database for every test."""
+def anonymous(tmp_path) -> Iterator[TestClient]:
+    """A fresh app with its own empty database, not logged in."""
     app = create_app(Settings(data_dir=tmp_path))
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture
+def client(anonymous) -> TestClient:
+    """A fresh app where the owner has set up the password and this device is logged in."""
+    resp = anonymous.post(
+        "/api/auth/setup", json={"password": OWNER_PASSWORD, "device_name": "Test laptop"}
+    )
+    assert resp.status_code == 201, resp.text
+    anonymous.headers["Authorization"] = f"Bearer {resp.json()['token']}"
+    return anonymous
 
 
 class Api:
