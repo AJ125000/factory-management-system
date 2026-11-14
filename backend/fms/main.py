@@ -90,6 +90,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content={"error": {"code": exc.code, "message": exc.message, "details": exc.details}},
         )
 
+    @app.exception_handler(Exception)
+    async def _unexpected(request: Request, exc: Exception) -> JSONResponse:
+        # Full details go to the log on the laptop; the app shows a calm message.
+        log.exception("Unexpected error on %s %s", request.method, request.url.path)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": {
+                    "code": "server_error",
+                    "message": "Something went wrong on the laptop. It has been noted in the log.",
+                    "details": {},
+                }
+            },
+        )
+
     @app.exception_handler(IntegrityError)
     async def _integrity_error(_request: Request, exc: IntegrityError) -> JSONResponse:
         log.warning("Integrity error: %s", exc.orig)

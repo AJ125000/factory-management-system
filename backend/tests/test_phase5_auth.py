@@ -162,3 +162,41 @@ def test_reset_password_command(tmp_path):
             "/api/auth/login", json={"password": "laptop-reset-1", "device_name": "Laptop"}
         )
         assert login.status_code == 200
+
+
+def test_app_errors_reach_the_laptop_log(client, caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="fms.client"):
+        resp = client.post(
+            "/api/client-errors",
+            json={"message": "Boom", "stack": "at Screen", "url": "/wages", "app_version": "0.5.0"},
+        )
+    assert resp.status_code == 204
+    assert "Boom" in caplog.text and "/wages" in caplog.text
+
+
+def test_unexpected_errors_are_logged_and_answered_calmly(client, caplog, monkeypatch):
+    import logging
+
+    from fms.services import workers
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("disk on fire")
+
+    monkeypatch.setattr(workers, "list_workers", broken)
+    with caplog.at_level(logging.ERROR, logger="fms"):
+        from fastapi.testclient import TestClient
+
+        with TestClient(client.app, raise_server_exceptions=False) as c:
+            c.headers.update(client.headers)
+            resp = c.get("/api/workers")
+    assert resp.status_code == 500
+    assert resp.json()["error"]["code"] == "server_error"
+    assert "disk on fire" in caplog.text
+
+
+def test_system_info(client):
+    info = client.get("/api/system-info").json()
+    assert info["version"] and info["log_file"].endswith("fms.log")
+    assert info["database_size"] > 0

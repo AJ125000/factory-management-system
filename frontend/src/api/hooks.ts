@@ -396,3 +396,14 @@ export function useRestoreBackup() {
     onSuccess: () => qc.invalidateQueries(),
   });
 }
+
+export function useSystemInfo() {
+  return useQuery({
+    queryKey: ['system-info'],
+    queryFn: () =>
+      api<{ version: string; data_dir: string; log_file: string; database_size: number }>(
+        'GET',
+        '/system-info',
+      ),
+  });
+}

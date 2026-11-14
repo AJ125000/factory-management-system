@@ -32,6 +32,7 @@ import { errorMessage } from './lib/errors';
 import { startHubWatch } from './lib/hub';
 import { flush, loadOutbox, setOnApplied } from './lib/outbox';
 import { startIdleLock } from './lib/pin';
+import { startErrorReporting } from './lib/reportError';
 import { registerServiceWorker } from './lib/serviceWorker';
 import { theme } from './theme';
 
@@ -114,6 +115,7 @@ startHubWatch(() => {
   refreshAll();
 });
 startIdleLock();
+startErrorReporting();
 registerServiceWorker();
 
 // Ask the browser not to clear our stored data under storage pressure (matters on phones).

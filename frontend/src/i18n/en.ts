@@ -53,6 +53,7 @@ const en = {
     password_too_short: 'The password must be at least 6 characters.',
     already_set_up: 'The owner password is already set. Please log in.',
     setup_required: 'Set the owner password first.',
+    server_error: 'Something went wrong on the laptop. It has been noted in the log.',
     not_a_backup: 'This file isn’t an FMS backup.',
     backup_damaged: 'This backup is damaged and can’t be restored. Try an older one.',
     restore_busy: 'The data is busy. Close other FMS windows on the laptop and try again.',
@@ -204,6 +205,14 @@ const en = {
       'A folder on the laptop, for example a USB drive (E:\\FMS backups) or a Google Drive folder. Leave empty to skip.',
     copyDirMissing: 'This folder can’t be found right now. Is the USB drive plugged in?',
     lastError: 'The last automatic backup failed: {{error}}',
+  },
+  about: {
+    title: 'About',
+    appVersion: 'App version',
+    hubVersion: 'Laptop (hub) version',
+    dataFolder: 'Data folder on the laptop',
+    logFile: 'Log file',
+    databaseSize: 'Database size',
   },
   metrics: {
     area: 'Area (sq ft)',

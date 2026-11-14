@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useSaveWorkerType, useSettings, useUpdateSettings, useWorkerTypes } from '../api/hooks';
 import type { AppSettings, Language, PayPeriod, PayScheme, WorkerType } from '../api/types';
+import { AboutCard } from '../components/AboutCard';
 import { BackupSettings } from '../components/BackupSettings';
 import { ConnectPhone } from '../components/ConnectPhone';
 import { SecuritySettings } from '../components/SecuritySettings';
@@ -37,6 +38,7 @@ export default function SettingsPage() {
         <BackupSettings />
         <ConnectPhone />
         <WorkerTypes />
+        <AboutCard />
       </Stack>
     </>
   );

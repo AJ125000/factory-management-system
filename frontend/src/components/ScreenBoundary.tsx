@@ -4,6 +4,7 @@ import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { checkHub } from '../lib/hub';
+import { reportError } from '../lib/reportError';
 
 function isLoadError(error: Error): boolean {
   // A screen's code couldn't be downloaded (laptop off, or a newer version replaced it).
@@ -41,6 +42,7 @@ export class ScreenBoundary extends Component<{ children: ReactNode }, { error: 
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('Screen failed', error, info.componentStack);
+    if (!isLoadError(error)) reportError(error, `screen ${location.pathname}`);
   }
 
   render() {
