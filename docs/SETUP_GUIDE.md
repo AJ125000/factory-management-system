@@ -20,7 +20,6 @@ For whoever installs FMS on the owner's laptop and phone. Allow about 30 minutes
    give this device a name, e.g. *Owner's laptop*.
 5. In **Settings**:
    - Fill in the **factory name** in English and Hindi (printed on wage slips).
-   - Under **Security → PIN lock**, set a PIN for this laptop if others use it.
    - Under **Backups**, optionally set a second folder (e.g. a USB drive or a Google
      Drive folder) so backups exist outside the laptop too.
 6. Add the **rates** (Rates page) and **workers** (Workers page).
@@ -60,10 +59,12 @@ On **each phone / PC**:
 4. Install it as an app:
    - **Android (Chrome):** menu ⋮ → **Install app** / **Add to Home screen**.
    - **iPhone (Safari):** Share → **Add to Home Screen**.
-5. Optional but recommended on phones: **Settings → Security → Set PIN**.
 
 The phone app now works **even when the laptop is off**; changes are sent
 automatically the next time the laptop can be reached.
+
+FMS also has an optional **PIN lock** (Settings → Security). It's off by default and
+isn't needed for normal use; each device only asks for the password once, at login.
 
 ## 3. Check it works
 
@@ -83,7 +84,7 @@ ready → Update now*).
 | Problem | What to do |
 |---|---|
 | Owner forgot the password | On the laptop: Start menu → **Reset FMS password**. Every device must log in again. |
-| Owner forgot a device's PIN | On the lock screen: *Forgot PIN? Log in with the password*. |
+| Owner set a PIN and forgot it | On the lock screen: *Forgot PIN? Log in with the password*. |
 | A phone was lost | On any logged-in device: **Settings → Security → Devices → Sign out**. |
 | Phone says *Laptop not reachable* | Laptop on? Not asleep? Tailscale running on both? FMS in the tray? |
 | Data looks wrong after a mistake | **Settings → Backups → Restore** an earlier backup (a copy of the current data is saved first). |
