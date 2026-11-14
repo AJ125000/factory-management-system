@@ -53,6 +53,10 @@ const en = {
     password_too_short: 'The password must be at least 6 characters.',
     already_set_up: 'The owner password is already set. Please log in.',
     setup_required: 'Set the owner password first.',
+    not_a_backup: 'This file isn’t an FMS backup.',
+    backup_damaged: 'This backup is damaged and can’t be restored. Try an older one.',
+    restore_busy: 'The data is busy. Close other FMS windows on the laptop and try again.',
+    backup_dir_missing: 'That folder doesn’t exist on the laptop.',
   },
   sync: {
     synced: 'All saved',
@@ -173,6 +177,33 @@ const en = {
     forgotTitle: 'Log in with the password?',
     forgotBody:
       'This removes the PIN and logs this device out. You’ll need the laptop to be reachable to log in again. Changes waiting to be sent are kept.',
+  },
+  backups: {
+    title: 'Backups',
+    intro:
+      'The laptop backs up all FMS data every day and keeps the last 30. Now and then, download one and keep it on a USB drive.',
+    last: 'Last backup: {{time}}',
+    never: 'No backup yet',
+    backupNow: 'Back up now',
+    done: 'Backup saved',
+    list: 'Backups on the laptop',
+    showAll: 'Show all {{count}}',
+    kinds: { auto: 'Daily', manual: 'Manual', 'before-restore': 'Before restore' },
+    download: 'Download',
+    restore: 'Restore',
+    restoreTitle: 'Restore this backup?',
+    restoreBody:
+      'All current data will be replaced with the data from {{time}}. A copy of the current data is saved first, so this can be undone. Logins and the password stay as they are.',
+    restoreFileTitle: 'Restore from this file?',
+    restoreFileBody:
+      'All current data will be replaced with the data in “{{name}}”. A copy of the current data is saved first, so this can be undone.',
+    restored: 'Backup restored. A copy of the earlier data was saved first.',
+    restoreFile: 'Restore from a file…',
+    copyDir: 'Also copy backups to this folder',
+    copyDirHelp:
+      'A folder on the laptop, for example a USB drive (E:\\FMS backups) or a Google Drive folder. Leave empty to skip.',
+    copyDirMissing: 'This folder can’t be found right now. Is the USB drive plugged in?',
+    lastError: 'The last automatic backup failed: {{error}}',
   },
   metrics: {
     area: 'Area (sq ft)',

@@ -10,10 +10,12 @@ import {
 } from '@tanstack/react-query';
 
 import { newId, submit } from '../lib/outbox';
-import { api } from './client';
+import { api, uploadFile } from './client';
 import type {
   AppSettings,
   AuthStatus,
+  BackupInfo,
+  BackupStatus,
   DeviceInfo,
   ConnectInfo,
   CurrentRate,
@@ -364,4 +366,33 @@ export function useChangePassword() {
 
 export function requestLogout() {
   return api<void>('POST', '/auth/logout');
+}
+
+// -------------------------------------------------------------------- backups
+export function useBackups() {
+  return useQuery({
+    queryKey: ['backups'],
+    queryFn: () => api<BackupStatus>('GET', '/backups'),
+  });
+}
+
+export function useBackUpNow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api<BackupInfo>('POST', '/backups'),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['backups'] }),
+  });
+}
+
+/** Restore a backup kept on the laptop, or a file from this device. */
+export function useRestoreBackup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (source: { name: string } | { file: File }) =>
+      'name' in source
+        ? api<BackupInfo>('POST', `/backups/${encodeURIComponent(source.name)}/restore`)
+        : uploadFile<BackupInfo>('/backups/restore-upload', source.file),
+    // Everything may have changed: reload every screen's data.
+    onSuccess: () => qc.invalidateQueries(),
+  });
 }

@@ -16,6 +16,8 @@ from .config import Settings
 from .db import make_engine, make_session_factory, run_migrations
 from .errors import FMSError
 from .services import auth
+from .services.backups import BackupScheduler
+from .services.settings import get_settings
 
 log = logging.getLogger("fms")
 
@@ -29,17 +31,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     run_migrations(settings.database_url)
     engine = make_engine(settings.database_url)
 
+    def backup_copy_dir() -> str:
+        with app.state.session_factory() as session:
+            return get_settings(session).backup_copy_dir.strip()
+
+    scheduler = BackupScheduler(settings.db_path, settings.data_dir, backup_copy_dir)
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         log.info("FMS %s started, data in %s", __version__, settings.data_dir)
+        if settings.auto_backups:
+            scheduler.start()
         yield
-        engine.dispose()
+        scheduler.stop()
+        app.state.engine.dispose()
 
     app = FastAPI(title="Kota Stone FMS", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = make_session_factory(engine)
     app.state.login_throttle = auth.LoginThrottle()
+    app.state.backup_scheduler = scheduler
     app.include_router(router)
 
     def _logged_in_device(token: str) -> str | None:

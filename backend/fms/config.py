@@ -27,10 +27,12 @@ def default_data_dir() -> Path:
 @dataclass(frozen=True)
 class Settings:
     data_dir: Path = field(default_factory=default_data_dir)
-    # Localhost only until owner login and device pairing land (phases 4-5).
+    # Localhost only: phones reach the hub through `tailscale serve`, which forwards
+    # to this address, so the hub is never exposed on the local network.
     host: str = "127.0.0.1"
     port: int = 8765
     static_dir: Path = Path(__file__).parent / "static"
+    auto_backups: bool = True  # daily backups in the background
 
     @property
     def db_path(self) -> Path:

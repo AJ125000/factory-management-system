@@ -217,6 +217,7 @@ class AppSettingsOut(BaseModel):
     print_language: Language = "hi"
     pay_period: PayPeriod = "half_month"
     phone_url: str = ""  # optional override of the detected Tailscale address
+    backup_copy_dir: str = ""  # optional second folder for backups (USB drive, Drive folder)
 
 
 class AppSettingsUpdate(In):
@@ -227,6 +228,7 @@ class AppSettingsUpdate(In):
     print_language: Language | None = None
     pay_period: PayPeriod | None = None
     phone_url: Annotated[str, Field(max_length=200, pattern=r"^(https?://\S+)?$")] | None = None
+    backup_copy_dir: Annotated[str, Field(max_length=500)] | None = None
 
 
 # --------------------------------------------------------------------- reports
@@ -314,3 +316,19 @@ class AuthStatusOut(BaseModel):
     setup_required: bool
     logged_in: bool
     device: DeviceOut | None = None
+
+
+# --------------------------------------------------------------------- backups
+class BackupOut(BaseModel):
+    name: str
+    size: int
+    created_at: datetime
+    kind: str
+
+
+class BackupStatusOut(BaseModel):
+    backups: list[BackupOut]
+    last_backup_at: datetime | None
+    copy_dir: str
+    copy_dir_ok: bool | None  # None when no extra folder is set
+    last_error: str | None

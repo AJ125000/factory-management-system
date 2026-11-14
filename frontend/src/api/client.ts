@@ -55,10 +55,11 @@ async function parseError(resp: Response): Promise<ApiError> {
 async function send(
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   path: string,
-  options: { body?: unknown; params?: Params },
+  options: { body?: unknown; params?: Params; raw?: Blob },
 ): Promise<Response> {
   const headers: Record<string, string> = {};
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+  if (options.raw) headers['Content-Type'] = 'application/octet-stream';
   const token = authToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
@@ -67,8 +68,9 @@ async function send(
     resp = await fetch(buildUrl(path, options.params), {
       method,
       headers,
-      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-      signal: AbortSignal.timeout(20_000),
+      body: options.raw ?? (options.body !== undefined ? JSON.stringify(options.body) : undefined),
+      // Uploading or restoring a backup can take longer than a normal request.
+      signal: AbortSignal.timeout(options.raw ? 300_000 : 20_000),
     });
   } catch {
     markUnreachable();
@@ -117,4 +119,10 @@ export async function downloadFile(path: string, params: Params, fallbackName: s
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/** Send a file as the request body (e.g. a backup to restore). */
+export async function uploadFile<T>(path: string, file: Blob): Promise<T> {
+  const resp = await send('POST', path, { raw: file });
+  return (await resp.json()) as T;
 }

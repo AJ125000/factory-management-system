@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..errors import Invalid
 from ..models import AppSetting
 from ..schemas import AppSettingsOut, AppSettingsUpdate
 from . import audit
@@ -19,6 +21,12 @@ def get_settings(session: Session) -> AppSettingsOut:
 
 
 def update_settings(session: Session, data: AppSettingsUpdate) -> AppSettingsOut:
+    if data.backup_copy_dir and not Path(data.backup_copy_dir).is_dir():
+        raise Invalid(
+            "That folder doesn't exist on the laptop",
+            reason="backup_dir_missing",
+            folder=data.backup_copy_dir,
+        )
     before = get_settings(session).model_dump()
     for key, value in data.model_dump(exclude_unset=True, exclude_none=True).items():
         row = session.get(AppSetting, key)

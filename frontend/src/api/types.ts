@@ -128,6 +128,7 @@ export interface AppSettings {
   print_language: Language;
   pay_period: PayPeriod;
   phone_url: string;
+  backup_copy_dir: string;
 }
 
 export type GroupBy = 'day' | 'month' | 'year';
@@ -170,4 +171,19 @@ export interface AuthStatus {
   setup_required: boolean;
   logged_in: boolean;
   device: DeviceInfo | null;
+}
+
+export interface BackupInfo {
+  name: string;
+  size: number;
+  created_at: string;
+  kind: 'auto' | 'manual' | 'before-restore';
+}
+
+export interface BackupStatus {
+  backups: BackupInfo[];
+  last_backup_at: string | null;
+  copy_dir: string;
+  copy_dir_ok: boolean | null;
+  last_error: string | null;
 }

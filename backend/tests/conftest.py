@@ -15,7 +15,7 @@ OWNER_PASSWORD = "owner-pass-123"
 @pytest.fixture
 def anonymous(tmp_path) -> Iterator[TestClient]:
     """A fresh app with its own empty database, not logged in."""
-    app = create_app(Settings(data_dir=tmp_path))
+    app = create_app(Settings(data_dir=tmp_path, auto_backups=False))
     with TestClient(app) as c:
         yield c
 
