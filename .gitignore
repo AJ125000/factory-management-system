@@ -21,3 +21,6 @@ dist/
 # Frontend: dependencies and the built app (rebuilt from frontend/ with `npm run build`)
 node_modules/
 backend/fms/static/
+
+# Windows installer output (built by CI)
+dist-installer/

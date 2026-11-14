@@ -35,6 +35,7 @@ On the laptop, Tailscale must be installed and the hub published once with
 | `backend/` | Hub server — Python 3.12, FastAPI, SQLite ([details](backend/README.md)) |
 | `frontend/` | The app — React, TypeScript, Mantine; English/Hindi |
 | `shared/` | Wage test cases both the hub and the app must pass |
+| `docs/` | [Setup guide](docs/SETUP_GUIDE.md) (installing on the laptop and phones) and [user guide](docs/USER_GUIDE.md) (English/Hindi) |
 | `legacy/` | The original Tkinter prototype, kept for reference |
 | `assets/` | Icons |
 
@@ -63,3 +64,22 @@ cd frontend && npm run build
 cd backend && uv run ruff check . && uv run pytest
 cd frontend && npm run typecheck && npm test && npm run build
 ```
+
+## Windows installer
+
+CI builds `FMS-Setup-<version>.exe` on every push (download it from the run's
+artifacts); pushing a version tag such as `v0.5.0` also attaches it to a GitHub
+release. It installs FMS for the current user, runs it in the system tray, starts it
+at login and keeps the data in `%LOCALAPPDATA%\FMS`. See the
+[setup guide](docs/SETUP_GUIDE.md).
+
+To build the packaged program locally (any OS; the `.exe` itself needs Windows):
+
+```bash
+cd frontend && npm run build
+cd ../backend && uv sync --extra desktop --group build
+uv run pyinstaller packaging/fms.spec --noconfirm   # -> backend/dist/FMS/
+```
+
+The installer is not code-signed, so Windows shows "Windows protected your PC" the
+first time (More info → Run anyway). A code-signing certificate removes this.

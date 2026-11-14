@@ -18,3 +18,5 @@ def configure_logging(log_dir: Path) -> None:
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     root.handlers[:] = [file_handler, console]
+    # Alembic lists every plugin it loads on each start; keep only its useful messages.
+    logging.getLogger("alembic.runtime.plugins").setLevel(logging.WARNING)

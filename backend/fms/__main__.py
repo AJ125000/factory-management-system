@@ -77,10 +77,18 @@ def serve(argv: list[str]) -> int:
     return 0
 
 
+def _pause_if_double_clicked() -> None:
+    """On Windows the Start-menu shortcut opens a console that would close at once."""
+    if sys.platform == "win32" and getattr(sys, "frozen", False):
+        input("\nPress Enter to close this window.")
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] == "reset-password":
-        return reset_password(argv[1:])
+        code = reset_password(argv[1:])
+        _pause_if_double_clicked()
+        return code
     return serve(argv)
 
 
