@@ -138,7 +138,7 @@ def _check_date(entry_date: date) -> None:
 
 
 def create_entry(session: Session, data: ProductionCreate) -> ProductionEntry:
-    if replay := existing_replay(session, ProductionEntry, data.id):
+    if replay := existing_replay(session, ProductionEntry, data.id, ENTITY):
         return replay
     worker = _usable_worker(session, data.worker_id)
     _check_date(data.entry_date)

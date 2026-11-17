@@ -28,3 +28,10 @@ class Conflict(FMSError):
 class Invalid(FMSError):
     status_code = 422
     code = "invalid"
+
+
+class Gone(FMSError):
+    """The record was deleted: a late, repeated create must not bring it back."""
+
+    status_code = 410
+    code = "gone"

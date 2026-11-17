@@ -3,7 +3,11 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+from ..errors import Gone
+from ..models import Tombstone
 
 
 def apply_changes(
@@ -27,13 +31,25 @@ def apply_changes(
         setattr(obj, field, value)
 
 
-def existing_replay[T](session: Session, model: type[T], record_id: object) -> T | None:
+def existing_replay[T](
+    session: Session, model: type[T], record_id: object, entity: str
+) -> T | None:
     """The record a device already created with this id, if any.
 
     Devices create records with their own ids and may send the same change twice
     (e.g. the connection dropped before they saw the reply). A repeat is answered with
-    the existing record instead of creating a duplicate or failing.
+    the existing record instead of creating a duplicate or failing - and if the record
+    has since been deleted (say on the laptop), the repeat must not bring it back.
     """
     if record_id is None:
         return None
-    return session.get(model, str(record_id))
+    if existing := session.get(model, str(record_id)):
+        return existing
+    deleted = session.scalar(
+        select(Tombstone.id).where(
+            Tombstone.entity == entity, Tombstone.entity_id == str(record_id)
+        )
+    )
+    if deleted:
+        raise Gone("This was deleted on another device", reason="deleted", id=str(record_id))
+    return None

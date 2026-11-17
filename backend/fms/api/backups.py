@@ -99,4 +99,4 @@ async def restore_upload(request: Request):
     try:
         return await run_in_threadpool(_restore, request, path)
     finally:
-        path.unlink(missing_ok=True)
+        svc.remove_with_sidecars(path)

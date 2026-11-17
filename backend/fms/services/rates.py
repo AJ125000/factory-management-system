@@ -95,7 +95,7 @@ def _flush_unique(session: Session) -> None:
 
 
 def create_rate(session: Session, data: RateCreate) -> Rate:
-    if replay := existing_replay(session, Rate, data.id):
+    if replay := existing_replay(session, Rate, data.id, ENTITY):
         return replay
     try:
         wt = get_worker_type(session, data.worker_type_id)

@@ -22,7 +22,9 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from ..db import run_migrations
+from alembic.script import ScriptDirectory
+
+from ..db import alembic_config, run_migrations
 from ..errors import Invalid, NotFound
 
 log = logging.getLogger("fms.backups")
@@ -137,8 +139,20 @@ def due(data_dir: Path, now: datetime | None = None) -> bool:
 
 
 # ------------------------------------------------------------------ restore
+def remove_with_sidecars(path: Path) -> None:
+    """Delete a database file and the -wal/-shm files SQLite may have created next to it."""
+    for suffix in ("", "-wal", "-shm"):
+        Path(f"{path}{suffix}").unlink(missing_ok=True)
+
+
+def known_revisions() -> set[str]:
+    script = ScriptDirectory.from_config(alembic_config())
+    return {rev.revision for rev in script.walk_revisions()}
+
+
 def check_backup_file(path: Path) -> None:
     """Make sure a file really is a usable FMS backup before restoring it."""
+    version = None
     try:
         conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
         try:
@@ -146,6 +160,9 @@ def check_backup_file(path: Path) -> None:
                 r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
             }
             ok = conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+            if "alembic_version" in tables:
+                row = conn.execute("SELECT version_num FROM alembic_version").fetchone()
+                version = row[0] if row else None
         finally:
             conn.close()
     except sqlite3.DatabaseError as exc:
@@ -154,6 +171,13 @@ def check_backup_file(path: Path) -> None:
         raise Invalid("This file isn't an FMS backup", reason="not_a_backup")
     if not ok:
         raise Invalid("This backup is damaged and can't be restored", reason="backup_damaged")
+    if version not in known_revisions():
+        # Made by a newer FMS (or tampered with): this version can't safely open it.
+        raise Invalid(
+            "This backup was made by a newer version of FMS. Update FMS on the laptop first.",
+            reason="backup_too_new",
+            version=version,
+        )
 
 
 def _carry_over_logins(restored: Path, live: Path) -> None:
@@ -163,8 +187,11 @@ def _carry_over_logins(restored: Path, live: Path) -> None:
         conn.execute("ATTACH DATABASE ? AS live", (str(live),))
         with conn:
             for table in AUTH_TABLES:
+                cols = ", ".join(
+                    f'"{row[1]}"' for row in conn.execute(f"PRAGMA live.table_info({table})")
+                )
                 conn.execute(f"DELETE FROM main.{table}")
-                conn.execute(f"INSERT INTO main.{table} SELECT * FROM live.{table}")
+                conn.execute(f"INSERT INTO main.{table} ({cols}) SELECT {cols} FROM live.{table}")
         conn.execute("DETACH DATABASE live")
     finally:
         conn.close()
@@ -172,12 +199,20 @@ def _carry_over_logins(restored: Path, live: Path) -> None:
 
 def prepare_restore(source: Path, db_path: Path, data_dir: Path) -> Path:
     """Validate a backup and turn it into a ready-to-swap copy (upgraded, logins kept)."""
-    check_backup_file(source)
     staged = data_dir / "restore-staged.db"
-    staged.unlink(missing_ok=True)
-    shutil.copy2(source, staged)
-    run_migrations(f"sqlite:///{staged.as_posix()}")  # an older backup is upgraded
-    _carry_over_logins(staged, db_path)
+    remove_with_sidecars(staged)
+    try:
+        check_backup_file(source)
+        shutil.copy2(source, staged)
+        run_migrations(f"sqlite:///{staged.as_posix()}")  # an older backup is upgraded
+        _carry_over_logins(staged, db_path)
+    except BaseException:
+        remove_with_sidecars(staged)
+        raise
+    finally:
+        # Opening the file read-only can still create -wal/-shm next to it.
+        for suffix in ("-wal", "-shm"):
+            Path(f"{source}{suffix}").unlink(missing_ok=True)
     return staged
 
 

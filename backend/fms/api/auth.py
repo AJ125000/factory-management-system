@@ -61,14 +61,15 @@ def setup(data: SetupIn, session: Session = Depends(get_session)):
 def login(data: LoginIn, request: Request, session: Session = Depends(get_session)):
     throttle: svc.LoginThrottle = request.app.state.login_throttle
     client = _client(request)
-    throttle.check(client)
-    try:
-        device, token = svc.login(session, data.password, data.device_name)
-    except svc.Unauthorized:
-        throttle.failed(client)
-        raise
-    throttle.succeeded(client)
-    session.commit()
+    with throttle.lock:
+        throttle.check(client)
+        try:
+            device, token = svc.login(session, data.password, data.device_name)
+        except svc.Unauthorized:
+            throttle.failed(client)
+            raise
+        throttle.succeeded(client)
+        session.commit()
     return LoginOut(token=token, device=_device_out(device, device.id))
 
 

@@ -157,4 +157,12 @@ describe('outbox', () => {
     expect(result.queued).toBe(false);
     expect(outbox.outboxItems()).toHaveLength(0);
   });
+
+  it('drops a create the hub refuses because it was deleted elsewhere', async () => {
+    const outbox = await freshOutbox();
+    refusals.set('/production', { status: 410, reason: 'deleted' });
+    const result = await outbox.submit(create('gone'));
+    expect(result.queued).toBe(false);
+    expect(outbox.outboxItems()).toHaveLength(0); // not stuck as "not saved"
+  });
 });

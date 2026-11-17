@@ -65,7 +65,7 @@ def _check_duplicate_name(session: Session, name: str, exclude_id: str | None = 
 
 
 def create_worker(session: Session, data: WorkerCreate) -> Worker:
-    if replay := existing_replay(session, Worker, data.id):
+    if replay := existing_replay(session, Worker, data.id, ENTITY):
         return replay
     _check_type_usable(session, data.worker_type_id)
     if not data.allow_duplicate_name:

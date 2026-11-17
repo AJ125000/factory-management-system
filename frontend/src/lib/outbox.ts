@@ -195,7 +195,12 @@ async function flushOnce(): Promise<void> {
           waiters.clear();
           break;
         }
-        if (error instanceof ApiError && error.status === 404 && item.method === 'DELETE') {
+        const alreadyDone =
+          error instanceof ApiError &&
+          // Deleting something already gone, or re-creating something deleted on another
+          // device (the hub refuses to bring it back): either way, nothing left to do.
+          ((error.status === 404 && item.method === 'DELETE') || error.status === 410);
+        if (alreadyDone) {
           remove(item.id); // already gone: that's what we wanted
           applied++;
           waiters.get(item.id)?.resolve({ queued: false, data: null });

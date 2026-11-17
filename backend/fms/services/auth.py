@@ -13,6 +13,7 @@ import base64
 import hashlib
 import hmac
 import secrets
+import threading
 import time
 from dataclasses import dataclass, field
 
@@ -199,6 +200,9 @@ class LoginThrottle:
     base_delay: float = 30.0
     max_delay: float = 900.0
     _failures: dict[str, tuple[int, float]] = field(default_factory=dict)
+    # Logins take turns: otherwise many guesses sent at once all pass check() before
+    # any failure is recorded, and the limit does nothing.
+    lock: threading.Lock = field(default_factory=threading.Lock)
 
     def check(self, client: str) -> None:
         count, last = self._failures.get(client, (0, 0.0))

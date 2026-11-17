@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -20,6 +21,22 @@ from .services.backups import BackupScheduler
 from .services.settings import get_settings
 
 log = logging.getLogger("fms")
+
+# Names the hub answers to. A web page can't trick a browser into talking to the hub
+# under another name (DNS rebinding) - e.g. to claim a fresh install's password.
+# FMS_ALLOWED_HOSTS adds more (comma-separated) for unusual setups.
+LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "testserver"})
+
+
+def host_allowed(host_header: str) -> bool:
+    host = host_header.strip().lower()
+    if host.startswith("["):  # [::1]:8765
+        host = host[1 : host.find("]")]
+    elif host.count(":") == 1:
+        host = host.split(":", 1)[0]
+    extra = {h.strip().lower() for h in os.environ.get("FMS_ALLOWED_HOSTS", "").split(",") if h}
+    return host in LOCAL_HOSTS or host in extra or host.endswith(".ts.net")
+
 
 # The only API paths that work without logging in.
 PUBLIC_API = frozenset({"/api/health", "/api/auth/status", "/api/auth/setup", "/api/auth/login"})
@@ -61,6 +78,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return None
             auth.touch(session, device)
             return device.id
+
+    @app.middleware("http")
+    async def _require_known_host(request: Request, call_next):
+        if not host_allowed(request.headers.get("host", "")):
+            log.warning("Refused a request for unknown host %r", request.headers.get("host"))
+            return JSONResponse(
+                status_code=400,
+                content={"error": {"code": "bad_host", "message": "Unknown host.", "details": {}}},
+            )
+        return await call_next(request)
 
     @app.middleware("http")
     async def _require_login(request: Request, call_next):
