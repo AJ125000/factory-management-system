@@ -21,7 +21,8 @@ def get_settings(session: Session) -> AppSettingsOut:
 
 
 def update_settings(session: Session, data: AppSettingsUpdate) -> AppSettingsOut:
-    if data.backup_copy_dir and not Path(data.backup_copy_dir).is_dir():
+    folder = data.backup_copy_dir
+    if folder and (not Path(folder).is_absolute() or not Path(folder).is_dir()):
         raise Invalid(
             "That folder doesn't exist on the laptop",
             reason="backup_dir_missing",

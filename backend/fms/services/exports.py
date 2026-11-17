@@ -132,6 +132,13 @@ def _title(ws: Worksheet, lines: list[str]) -> int:
     return len(lines) + 2
 
 
+def _text_safe(cell):
+    """Typed text such as a name "=HYPERLINK(...)" must stay text, never become a formula."""
+    if isinstance(cell.value, str) and cell.value.startswith("="):
+        cell.data_type = "s"
+    return cell
+
+
 def _table(
     ws: Worksheet,
     start_row: int,
@@ -141,20 +148,20 @@ def _table(
     total: list[Any] | None = None,
 ) -> None:
     for col, text in enumerate(headers, start=1):
-        cell = ws.cell(row=start_row, column=col, value=text)
+        cell = _text_safe(ws.cell(row=start_row, column=col, value=text))
         cell.font = Font(bold=True)
         cell.fill = HEADER_FILL
         cell.border = HEADER_BORDER
         cell.alignment = Alignment(vertical="center", wrap_text=True)
     for r, values in enumerate(rows, start=start_row + 1):
         for col, value in enumerate(values, start=1):
-            cell = ws.cell(row=r, column=col, value=value)
+            cell = _text_safe(ws.cell(row=r, column=col, value=value))
             if col in formats:
                 cell.number_format = formats[col]
     if total:
         r = start_row + len(rows) + 1
         for col, value in enumerate(total, start=1):
-            cell = ws.cell(row=r, column=col, value=value)
+            cell = _text_safe(ws.cell(row=r, column=col, value=value))
             cell.font = Font(bold=True)
             cell.border = TOTAL_BORDER
             if col in formats:
