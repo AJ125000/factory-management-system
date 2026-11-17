@@ -71,6 +71,8 @@ const queryClient = new QueryClient({
   },
 });
 
+const PERSIST_KEY = 'fms.queryCache.v1';
+
 /** Saves fetched data in IndexedDB so screens still show it when the laptop is off. */
 const persister = createAsyncStoragePersister({
   storage: {
@@ -78,7 +80,7 @@ const persister = createAsyncStoragePersister({
     setItem: (key, value) => set(key, value),
     removeItem: (key) => del(key),
   },
-  key: 'fms.queryCache.v1',
+  key: PERSIST_KEY,
   throttleTime: 2000,
 });
 
@@ -108,7 +110,13 @@ subscribeAuth(() => {
   if (authToken()) {
     whenLoggedIn();
     refreshAll();
+    return;
   }
+  // Logged out or signed out from another device (e.g. a lost phone): wipe the worker
+  // and wage data saved on this device. Waiting changes stay, so nothing typed is lost
+  // if the owner simply logs in again.
+  queryClient.clear();
+  void del(PERSIST_KEY);
 });
 startHubWatch(() => {
   whenLoggedIn();
