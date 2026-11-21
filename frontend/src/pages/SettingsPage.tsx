@@ -18,7 +18,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useSaveWorkerType, useSettings, useUpdateSettings, useWorkerTypes } from '../api/hooks';
-import type { AppSettings, Language, PayPeriod, PayScheme, WorkerType } from '../api/types';
+import type { AppSettings, Language, PayPeriod, Role, WorkerType } from '../api/types';
 import { AboutCard } from '../components/AboutCard';
 import { BackupSettings } from '../components/BackupSettings';
 import { ConnectPhone } from '../components/ConnectPhone';
@@ -161,8 +161,8 @@ function WorkerTypes() {
   const { reachable } = useHubState();
   const [editing, setEditing] = useState<WorkerType | 'new' | null>(null);
 
-  const schemeLabel = (s: PayScheme) =>
-    s === 'cutting' ? t('settings.schemeCutting') : t('settings.schemeLoading');
+  const roleLabel = (r: Role) =>
+    r === 'operator' ? t('settings.schemeCutting') : t('settings.schemeLoading');
 
   return (
     <Card withBorder>
@@ -189,7 +189,7 @@ function WorkerTypes() {
                 <Table.Td fw={500}>{localName(wt.name_en, wt.name_hi, i18n.language)}</Table.Td>
                 <Table.Td>
                   <Text size="sm" c="dimmed">
-                    {schemeLabel(wt.pay_scheme)}
+                    {roleLabel(wt.role)}
                   </Text>
                 </Table.Td>
                 <Table.Td>
@@ -245,7 +245,7 @@ function WorkerTypeForm({ type, onDone }: { type: WorkerType | null; onDone: () 
   const save = useSaveWorkerType();
   const [nameEn, setNameEn] = useState(type?.name_en ?? '');
   const [nameHi, setNameHi] = useState(type?.name_hi ?? '');
-  const [scheme, setScheme] = useState<PayScheme>(type?.pay_scheme ?? 'cutting');
+  const [role, setRole] = useState<Role>(type?.role ?? 'operator');
 
   return (
     <form
@@ -254,7 +254,7 @@ function WorkerTypeForm({ type, onDone }: { type: WorkerType | null; onDone: () 
         save.mutate(
           type
             ? { id: type.id, name_en: nameEn, name_hi: nameHi || null }
-            : { name_en: nameEn, name_hi: nameHi || null, pay_scheme: scheme },
+            : { name_en: nameEn, name_hi: nameHi || null, role },
           {
             onSuccess: () => {
               notifySaved(t('common.saved'));
@@ -283,11 +283,11 @@ function WorkerTypeForm({ type, onDone }: { type: WorkerType | null; onDone: () 
           allowDeselect={false}
           disabled={type !== null} // fixed once created: existing rates depend on it
           data={[
-            { value: 'cutting', label: t('settings.schemeCutting') },
-            { value: 'loading', label: t('settings.schemeLoading') },
+            { value: 'operator', label: t('settings.schemeCutting') },
+            { value: 'loader', label: t('settings.schemeLoading') },
           ]}
-          value={scheme}
-          onChange={(v) => v && setScheme(v as PayScheme)}
+          value={role}
+          onChange={(v) => v && setRole(v as Role)}
         />
         <Group justify="flex-end">
           <Button variant="default" onClick={onDone}>

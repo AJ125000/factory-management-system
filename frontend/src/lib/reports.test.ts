@@ -10,6 +10,7 @@ const bucket = (period: string, area: string) => ({
   entry_count: 1,
   total_quantity: 5,
   total_area_sqft: area,
+  total_rft: '0',
   total_cuts: 2,
   total_wage: '100.00',
   missing_rate_entries: 0,

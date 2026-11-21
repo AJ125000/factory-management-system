@@ -34,6 +34,8 @@ import {
   fetchDeleteImpact,
   useArchiveWorker,
   useDeleteWorker,
+  useLoaderAssignments,
+  useMachines,
   useSaveWorker,
   useWorkerTypes,
 } from '../api/hooks';
@@ -44,6 +46,7 @@ import { DateField, PageHeader, WorkerName, notifyError, notifySaved } from '../
 import { localName } from '../i18n';
 import { useHubState } from '../lib/hub';
 import { todayISO } from '../lib/format';
+import { loaderOn } from '../lib/wages';
 
 export default function WorkersPage() {
   const { t, i18n } = useTranslation();
@@ -55,6 +58,13 @@ export default function WorkersPage() {
   const pendingIds = workers.pendingIds;
   const archive = useArchiveWorker();
   const { reachable } = useHubState();
+  const machines = useMachines().data ?? [];
+  const assignments = useLoaderAssignments().data ?? [];
+  /** Machines where this loader loads today. */
+  const loaderMachines = (w: Worker) =>
+    machines
+      .filter((m) => loaderOn(assignments, m.id, todayISO()) === w.id)
+      .map((m) => localName(m.name_en, m.name_hi, i18n.language));
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -185,6 +195,13 @@ export default function WorkersPage() {
                     </Table.Td>
                     <Table.Td>
                       {localName(w.worker_type.name_en, w.worker_type.name_hi, i18n.language)}
+                      {w.worker_type.role === 'loader' && (
+                        <Text size="xs" c={loaderMachines(w).length ? 'dimmed' : 'orange'}>
+                          {loaderMachines(w).length
+                            ? t('workers.loaderAt', { machines: loaderMachines(w).join(', ') })
+                            : t('workers.notAssigned')}
+                        </Text>
+                      )}
                     </Table.Td>
                     <Table.Td>{w.phone ?? '—'}</Table.Td>
                     <Table.Td>
@@ -351,6 +368,11 @@ function WorkerForm({ worker, onDone }: { worker: Worker | null; onDone: () => v
           value={values.worker_type_id || null}
           onChange={(v) => set('worker_type_id', v ?? '')}
           allowDeselect={false}
+          description={
+            types.data?.find((x) => x.id === values.worker_type_id)?.role === 'loader'
+              ? t('workers.assignHint')
+              : undefined
+          }
         />
         <Group grow>
           <TextInput

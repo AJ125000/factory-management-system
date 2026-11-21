@@ -55,7 +55,9 @@ def delete_impact(worker_id: str, session: Session = Depends(get_session)):
     """What deleting this worker would remove. Show it to the owner before deleting."""
     svc.get_worker(session, worker_id)
     return DeleteImpact(
-        worker_id=worker_id, production_entries=svc.count_entries(session, worker_id)
+        worker_id=worker_id,
+        production_entries=svc.count_entries(session, worker_id),
+        loader_assignments=svc.count_assignments(session, worker_id),
     )
 
 

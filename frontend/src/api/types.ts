@@ -1,7 +1,10 @@
 // Mirrors backend/fms/schemas.py. Decimal values arrive as strings (e.g. "180.00").
 
-export type PayScheme = 'cutting' | 'loading';
-export type RateComponent = 'cutting' | 'loading' | 'unloading';
+export type Role = 'operator' | 'loader';
+export type MachineKind = 'block_cutting' | 'double_edge' | 'table_polish' | 'single_cutting';
+/** 'cutting', 'loading', 'unloading', or 'polish_N' for table polish with N batti. */
+export type RateComponent = string;
+export type Unit = 'sqft' | 'rft';
 export type Language = 'en' | 'hi';
 export type PayPeriod = 'half_month' | 'month';
 export type Decimal = string;
@@ -12,8 +15,37 @@ export interface WorkerType {
   code: string;
   name_en: string;
   name_hi: string | null;
-  pay_scheme: PayScheme;
+  role: Role;
   is_active: boolean;
+}
+
+export interface Machine {
+  id: string;
+  code: string;
+  kind: MachineKind;
+  name_en: string;
+  name_hi: string | null;
+  sort_order: number;
+  is_active: boolean;
+}
+
+/** A standard size and what one piece counts for. Feet on double edge, inches on single cutting. */
+export interface MachineSize {
+  id: string;
+  machine_id: string;
+  length: Decimal;
+  width: Decimal;
+  rft: Decimal;
+  sqft: Decimal;
+}
+
+/** Who loads at a machine from a date onwards (worker_id null = no loader). */
+export interface LoaderAssignment {
+  id: string;
+  machine_id: string;
+  worker_id: string | null;
+  effective_from: ISODate;
+  note: string | null;
 }
 
 export interface Worker {
@@ -41,24 +73,27 @@ export interface WorkerInput {
 
 export interface Rate {
   id: string;
-  worker_type_id: string;
+  machine_id: string;
   component: RateComponent;
-  rate_per_sqft: Decimal;
+  unit: Unit;
+  rate: Decimal;
   effective_from: ISODate;
   note: string | null;
 }
 
 export interface CurrentRate {
-  worker_type_id: string;
+  machine_id: string;
   component: RateComponent;
-  rate_per_sqft: Decimal | null;
+  unit: Unit;
+  rate: Decimal | null;
   effective_from: ISODate | null;
 }
 
 export interface WageLine {
   component: RateComponent;
-  effective_area_sqft: Decimal;
-  rate_per_sqft: Decimal;
+  basis: Decimal; // the sq ft or running ft the rate is multiplied by
+  unit: Unit;
+  rate: Decimal;
   amount: Decimal;
 }
 
@@ -66,33 +101,61 @@ export interface ProductionEntry {
   id: string;
   worker_id: string;
   worker_type_id: string;
+  machine_id: string;
   entry_date: ISODate;
-  length_ft: Decimal;
-  width_ft: Decimal;
+  length_ft: Decimal | null;
+  width_ft: Decimal | null;
+  size_id: string | null;
+  size_label: string | null;
+  piece_sqft: Decimal;
+  piece_rft: Decimal | null;
   cuts: number;
+  batti: number | null;
   quantity: number;
+  loader_id: string | null; // only when someone filled in on this entry
   notes: string | null;
   area_sqft: Decimal;
+  rft_total: Decimal | null;
+  /** The pay of paid_worker_id as paid_as (the operator, except on a loader's wage slip). */
+  paid_as: Role;
+  paid_worker_id: string | null;
   wage: Decimal | null;
   wage_lines: WageLine[];
   missing_rates: RateComponent[];
+  loader_worker_id: string | null;
+  loader_wage: Decimal | null;
+  loader_wage_lines: WageLine[];
+  loader_missing_rates: RateComponent[];
+  no_loader: boolean;
 }
 
 export interface ProductionInput {
   worker_id: string;
+  machine_id: string;
   entry_date: ISODate;
-  length_ft: string;
-  width_ft: string;
+  length_ft: string | null;
+  width_ft: string | null;
+  size_id: string | null;
   cuts: number;
+  batti: number | null;
   quantity: number;
+  loader_id: string | null;
   notes?: string | null;
 }
 
 export interface WagePreview {
   area_sqft: Decimal;
+  rft_total: Decimal | null;
+  piece_sqft: Decimal;
+  piece_rft: Decimal | null;
   wage: Decimal | null;
   wage_lines: WageLine[];
   missing_rates: RateComponent[];
+  loader_worker_id: string | null;
+  loader_wage: Decimal | null;
+  loader_wage_lines: WageLine[];
+  loader_missing_rates: RateComponent[];
+  no_loader: boolean;
 }
 
 export interface WorkerWages {
@@ -101,10 +164,12 @@ export interface WorkerWages {
   name_hi: string | null;
   worker_type_name_en: string;
   worker_type_name_hi: string | null;
+  role: Role;
   is_archived: boolean;
   entry_count: number;
   total_quantity: number;
   total_area_sqft: Decimal;
+  total_rft: Decimal;
   total_cuts: number;
   total_wage: Decimal;
   missing_rate_entries: number;
@@ -118,6 +183,7 @@ export interface WagesReport {
   total_wage: Decimal;
   total_area_sqft: Decimal;
   missing_rate_entries: number;
+  no_loader_entries: number;
 }
 
 export interface AppSettings {
@@ -138,6 +204,7 @@ export interface ProductionBucket {
   entry_count: number;
   total_quantity: number;
   total_area_sqft: Decimal;
+  total_rft: Decimal;
   total_cuts: number;
   total_wage: Decimal;
   missing_rate_entries: number;

@@ -6,33 +6,44 @@ from sqlalchemy.orm import Session
 from ..db import get_session
 from ..schemas import CurrentRateOut, RateCreate, RateOut, RateUpdate
 from ..services import rates as svc
-from ..services.worker_types import list_worker_types
+from ..services.machines import list_machines
 from ..util import today
-from ..wages import SCHEME_COMPONENTS, PayScheme
+from ..wages import MachineKind, allowed_components, batti_of, component_unit
 
 router = APIRouter(prefix="/rates", tags=["rates"])
 
 
 @router.get("", response_model=list[RateOut])
-def list_rates(worker_type_id: str | None = None, session: Session = Depends(get_session)):
-    """Full rate history, newest first within each worker type and component."""
-    return svc.list_rates(session, worker_type_id)
+def list_rates(machine_id: str | None = None, session: Session = Depends(get_session)):
+    """Full rate history, newest first within each machine and component."""
+    return svc.list_rates(session, machine_id)
 
 
 @router.get("/current", response_model=list[CurrentRateOut])
 def current_rates(on: date | None = None, session: Session = Depends(get_session)):
-    """The rate in effect on a date (default today) for every active worker type."""
+    """The rate in effect on a date (default today) for every active machine.
+
+    Table polish lists only the batti counts that have a rate.
+    """
     on = on or today()
     book = svc.RateBook.load(session)
     out = []
-    for wt in list_worker_types(session):
-        for component in SCHEME_COMPONENTS[PayScheme(wt.pay_scheme)]:
-            found = book.lookup_with_date(wt.id, component, on)
+    for machine in list_machines(session, include_inactive=False):
+        used = book.components(machine.id)
+        for component in allowed_components(machine.kind):
+            if (
+                MachineKind(machine.kind) is MachineKind.TABLE_POLISH
+                and batti_of(component)
+                and component not in used
+            ):
+                continue
+            found = book.lookup_with_date(machine.id, component, on)
             out.append(
                 CurrentRateOut(
-                    worker_type_id=wt.id,
+                    machine_id=machine.id,
                     component=component,
-                    rate_per_sqft=found[0] if found else None,
+                    unit=component_unit(machine.kind, component),
+                    rate=found[0] if found else None,
                     effective_from=found[1] if found else None,
                 )
             )

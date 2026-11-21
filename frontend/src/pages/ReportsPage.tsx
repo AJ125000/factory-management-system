@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 
-import { useProductionSummary, useWorkers } from '../api/hooks';
+import { useMachines, useProductionSummary, useWorkers } from '../api/hooks';
+import { localName } from '../i18n';
 import type { GroupBy } from '../api/types';
 import { ExportMenu } from '../components/ExportMenu';
 import {
@@ -29,10 +30,12 @@ export default function ReportsPage() {
   const [period, setPeriod] = useState<PeriodValue>(periodFromPreset('this_year'));
   const [groupBy, setGroupBy] = useState<GroupBy>('month');
   const [workerId, setWorkerId] = useState<string | null>(null);
+  const [machineId, setMachineId] = useState<string | null>(null);
+  const machines = useMachines(true).data ?? [];
   const [metric, setMetric] = useState<Metric>('area');
   const workers = useWorkers(true);
   const workerIds = workerId ? [workerId] : undefined;
-  const summary = useProductionSummary(period.start, period.end, groupBy, workerIds);
+  const summary = useProductionSummary(period.start, period.end, groupBy, workerIds, machineId ?? undefined);
 
   const buckets = summary.data?.buckets ?? [];
   const totals = summary.data?.totals;
@@ -41,6 +44,7 @@ export default function ReportsPage() {
     end: period.end,
     group_by: groupBy,
     worker_id: workerIds,
+    machine_id: machineId ?? undefined,
   };
 
   const print = () => {
@@ -51,6 +55,7 @@ export default function ReportsPage() {
       lang: i18n.language,
     });
     if (workerId) search.set('worker', workerId);
+    if (machineId) search.set('machine', machineId);
     navigate(`/print/production?${search}`);
   };
 
@@ -95,6 +100,15 @@ export default function ReportsPage() {
             value={workerId}
             onChange={setWorkerId}
           />
+          <Select
+            label={t('production.machine')}
+            placeholder={t('production.filterMachine')}
+            clearable
+            w={220}
+            data={machines.map((m) => ({ value: m.id, label: localName(m.name_en, m.name_hi, i18n.language) }))}
+            value={machineId}
+            onChange={setMachineId}
+          />
         </Group>
       </Card>
 
@@ -129,7 +143,7 @@ export default function ReportsPage() {
                     <Table.Th className="num">{t('wages.entries')}</Table.Th>
                     <Table.Th className="num">{t('metrics.pieces')}</Table.Th>
                     <Table.Th className="num">{t('metrics.area')}</Table.Th>
-                    <Table.Th className="num">{t('wages.cuts')}</Table.Th>
+                    <Table.Th className="num">{t('wages.rft')}</Table.Th>
                     <Table.Th className="num">{t('metrics.wages')}</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
@@ -140,7 +154,7 @@ export default function ReportsPage() {
                       <Table.Td className="num">{formatNumber(b.entry_count)}</Table.Td>
                       <Table.Td className="num">{formatNumber(b.total_quantity)}</Table.Td>
                       <Table.Td className="num">{formatNumber(b.total_area_sqft)}</Table.Td>
-                      <Table.Td className="num">{formatNumber(b.total_cuts)}</Table.Td>
+                      <Table.Td className="num">{formatNumber(b.total_rft)}</Table.Td>
                       <Table.Td className="num">{formatMoney(b.total_wage)}</Table.Td>
                     </Table.Tr>
                   ))}
@@ -152,7 +166,7 @@ export default function ReportsPage() {
                       <Table.Td className="num">{formatNumber(totals.entry_count)}</Table.Td>
                       <Table.Td className="num">{formatNumber(totals.total_quantity)}</Table.Td>
                       <Table.Td className="num">{formatNumber(totals.total_area_sqft)}</Table.Td>
-                      <Table.Td className="num">{formatNumber(totals.total_cuts)}</Table.Td>
+                      <Table.Td className="num">{formatNumber(totals.total_rft)}</Table.Td>
                       <Table.Td className="num">{formatMoney(totals.total_wage)}</Table.Td>
                     </Table.Tr>
                   </Table.Tfoot>

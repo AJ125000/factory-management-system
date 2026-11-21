@@ -7,10 +7,19 @@
 ## English
 
 ### Every day
-1. **Production** → choose the worker, date, stone size (length × width in feet),
-   number of cuts and pieces → **Save entry**. The wage is shown before you save.
-   After saving, the worker, date and size stay filled in, so the next entry is quick.
-2. Mistakes: in the list below, use ✏️ to edit or 🗑️ to delete an entry.
+1. **Production** → choose the **machine operator**, the **machine** and the date, then
+   what the machine needs:
+   - *Double edge cutting*: tap a size (2×2, 2×1½, 2×1) or type another size in feet.
+   - *Single cutting*: pick the size (inches) from the list.
+   - *Table polish*: length × width in feet and the number of **batti**.
+   - *Cutting machine*: length × width in feet and the number of cuts.
+
+   Then the number of pieces → **Save entry**. The operator's and the loader's wages are
+   shown before you save. After saving, everything except the pieces stays filled in.
+2. **Loaders are paid automatically**: every entry also pays the loader of that machine
+   on that date. You never make entries for loaders. If the usual loader was absent,
+   tick **Someone else loaded** and choose who did, for that entry only.
+3. Mistakes: in the list below, use ✏️ to edit or 🗑️ to delete an entry.
 
 ### Paying workers
 1. **Wages** → choose the period (e.g. *This half-month*).
@@ -19,9 +28,16 @@
    their slip; both of you can sign it.
 4. **Download Excel** keeps a copy for your records.
 
-### Rates
-**Rates** → **Change rate** → enter the new rate and the date it starts from. Wages
-before that date never change. Use *Correct* only to fix a typing mistake in an old rate.
+### Machines & rates
+- **Change rate** → choose the operator or loader rate, enter the new rate and the date
+  it starts from. Wages before that date never change. Use *Correct* only to fix a
+  typing mistake in an old rate.
+- **Change loader** → choose the loader and the date they start at this machine (to
+  replace or swap loaders). Entries before that date keep paying the earlier loader.
+- **Size table** (double edge and single cutting) → **Add size** with its running feet
+  and sq ft per piece. A single cutting size must be in the table before it can be used.
+  Editing a size never changes entries already saved.
+- **Rename** a machine, or stop using it.
 
 ### Reports
 **Dashboard** shows this month and year at a glance. **Reports** shows production by
@@ -45,10 +61,18 @@ day, month or year; you can **Download Excel** or **Print / Save as PDF**.
 ## हिंदी
 
 ### रोज़ का काम
-1. **उत्पादन** → मज़दूर, तारीख, पत्थर का नाप (लंबाई × चौड़ाई फुट में), कट और नग चुनें →
-   **एंट्री सहेजें**। सहेजने से पहले ही मज़दूरी दिख जाती है। सहेजने के बाद मज़दूर, तारीख
-   और नाप भरे रहते हैं, ताकि अगली एंट्री जल्दी हो।
-2. गलती हो जाए तो: नीचे की सूची में ✏️ से बदलें या 🗑️ से हटाएँ।
+1. **उत्पादन** → **मशीन ऑपरेटर**, **मशीन** और तारीख चुनें, फिर मशीन के हिसाब से:
+   - *डबल एज कटिंग*: साइज़ दबाएँ (2×2, 2×1½, 2×1) या दूसरा साइज़ फुट में लिखें।
+   - *सिंगल कटिंग*: सूची से साइज़ (इंच) चुनें।
+   - *टेबल पॉलिश*: लंबाई × चौड़ाई फुट में और **बत्ती** की संख्या।
+   - *कटिंग मशीन*: लंबाई × चौड़ाई फुट में और कट।
+
+   फिर नग → **एंट्री सहेजें**। सहेजने से पहले ऑपरेटर और लोडर दोनों की मज़दूरी दिख जाती
+   है। सहेजने के बाद नग छोड़कर सब भरा रहता है।
+2. **लोडर को अपने-आप पैसे मिलते हैं**: हर एंट्री से उस दिन उस मशीन के लोडर को भी पैसे
+   मिलते हैं। लोडर की अलग एंट्री कभी नहीं करनी। अगर रोज़ का लोडर नहीं आया, तो
+   **किसी और ने लोड किया** पर टिक करें और उसे चुनें — सिर्फ़ उस एंट्री के लिए।
+3. गलती हो जाए तो: नीचे की सूची में ✏️ से बदलें या 🗑️ से हटाएँ।
 
 ### मज़दूरी देना
 1. **मज़दूरी** → अवधि चुनें (जैसे *इस पखवाड़े*)।
@@ -57,9 +81,16 @@ day, month or year; you can **Download Excel** or **Print / Save as PDF**.
    उसकी पर्ची दें; दोनों हस्ताक्षर कर सकते हैं।
 4. **Excel डाउनलोड करें** से अपने रिकॉर्ड के लिए कॉपी रखें।
 
-### दरें
-**दरें** → **दर बदलें** → नई दर और वह तारीख डालें जिससे लागू हो। उस तारीख से पहले की
-मज़दूरी कभी नहीं बदलती। *सुधारें* सिर्फ़ पुरानी दर में टाइपिंग की गलती ठीक करने के लिए है।
+### मशीनें और दरें
+- **दर बदलें** → ऑपरेटर या लोडर की दर चुनें, नई दर और वह तारीख डालें जिससे लागू हो।
+  उस तारीख से पहले की मज़दूरी कभी नहीं बदलती। *सुधारें* सिर्फ़ पुरानी दर में टाइपिंग की
+  गलती ठीक करने के लिए है।
+- **लोडर बदलें** → लोडर और वह तारीख चुनें जिससे वह इस मशीन पर काम करेगा (लोडर बदलने
+  या अदला-बदली के लिए)। उस तारीख से पहले की एंट्रियों के पैसे पिछले लोडर को ही मिलते हैं।
+- **साइज़ तालिका** (डबल एज और सिंगल कटिंग) → **साइज़ जोड़ें**, हर नग के रनिंग फुट और वर्ग
+  फुट के साथ। सिंगल कटिंग का साइज़ इस्तेमाल से पहले तालिका में होना चाहिए। साइज़ बदलने
+  से पहले से सेव एंट्रियाँ नहीं बदलतीं।
+- मशीन का **नाम बदलें**, या उसका इस्तेमाल बंद करें।
 
 ### रिपोर्ट
 **डैशबोर्ड** पर इस महीने और साल की झलक दिखती है। **रिपोर्ट** में दिन, महीने या साल के

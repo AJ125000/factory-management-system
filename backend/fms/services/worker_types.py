@@ -42,7 +42,7 @@ def create_worker_type(session: Session, data: WorkerTypeCreate) -> WorkerType:
         code=_unique_code(session, data.name_en),
         name_en=data.name_en,
         name_hi=data.name_hi or None,
-        pay_scheme=data.pay_scheme.value,
+        role=data.role.value,
     )
     session.add(wt)
     session.flush()

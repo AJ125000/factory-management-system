@@ -8,9 +8,9 @@ from fms.models import AuditLog, Tombstone
 def test_seeded_worker_types(api):
     types = api.ok(api.c.get("/api/worker-types"))
     by_code = {t["code"]: t for t in types}
-    assert by_code["machine_operator"]["pay_scheme"] == "cutting"
+    assert by_code["machine_operator"]["role"] == "operator"
     assert by_code["machine_operator"]["name_hi"] == "मशीन ऑपरेटर"
-    assert by_code["loader"]["pay_scheme"] == "loading"
+    assert by_code["loader"]["role"] == "loader"
 
 
 def test_create_worker_with_hindi_name(api):

@@ -7,7 +7,7 @@ import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router';
 
-import { useProductionSummary, useSettings, useWorkers } from '../api/hooks';
+import { useMachines, useProductionSummary, useSettings, useWorkers } from '../api/hooks';
 import type { GroupBy, Language } from '../api/types';
 import { localName } from '../i18n';
 import { formatDate, formatMoney, formatNumber, todayISO } from '../lib/format';
@@ -33,7 +33,15 @@ export default function PrintReportPage() {
   const t = i18n.getFixedT(lang);
 
   const settings = useSettings().data;
-  const summary = useProductionSummary(start, end, groupBy, workerId ? [workerId] : undefined);
+  const machineId = params.get('machine');
+  const summary = useProductionSummary(
+    start,
+    end,
+    groupBy,
+    workerId ? [workerId] : undefined,
+    machineId ?? undefined,
+  );
+  const machine = useMachines(true).data?.find((m) => m.id === machineId);
   const worker = useWorkers(true).data?.find((w) => w.id === workerId);
 
   useEffect(() => {
@@ -105,6 +113,12 @@ export default function PrintReportPage() {
             <dd>{t(`reports.${groupBy}`)}</dd>
             <dt>{t('production.worker')}:</dt>
             <dd>{worker ? localName(worker.name_en, worker.name_hi, lang) : t('reports.allWorkers')}</dd>
+            {machine && (
+              <>
+                <dt>{t('production.machine')}:</dt>
+                <dd>{localName(machine.name_en, machine.name_hi, lang)}</dd>
+              </>
+            )}
           </dl>
 
           <table>
@@ -114,7 +128,7 @@ export default function PrintReportPage() {
                 <th className="num">{t('wages.entries')}</th>
                 <th className="num">{t('metrics.pieces')}</th>
                 <th className="num">{t('metrics.area')}</th>
-                <th className="num">{t('wages.cuts')}</th>
+                <th className="num">{t('wages.rft')}</th>
                 <th className="num">{t('metrics.wages')}</th>
               </tr>
             </thead>
@@ -125,7 +139,7 @@ export default function PrintReportPage() {
                   <td className="num">{formatNumber(b.entry_count)}</td>
                   <td className="num">{formatNumber(b.total_quantity)}</td>
                   <td className="num">{formatNumber(b.total_area_sqft)}</td>
-                  <td className="num">{formatNumber(b.total_cuts)}</td>
+                  <td className="num">{formatNumber(b.total_rft)}</td>
                   <td className="num">{formatMoney(b.total_wage)}</td>
                 </tr>
               ))}
@@ -137,7 +151,7 @@ export default function PrintReportPage() {
                   <td className="num">{formatNumber(totals.entry_count)}</td>
                   <td className="num">{formatNumber(totals.total_quantity)}</td>
                   <td className="num">{formatNumber(totals.total_area_sqft)}</td>
-                  <td className="num">{formatNumber(totals.total_cuts)}</td>
+                  <td className="num">{formatNumber(totals.total_rft)}</td>
                   <td className="num slip-total">{formatMoney(totals.total_wage)}</td>
                 </tr>
               </tfoot>

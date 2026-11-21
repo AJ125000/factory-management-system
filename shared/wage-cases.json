@@ -1,11 +1,13 @@
 [
   {
     "name": "cutting basic",
-    "scheme": "cutting",
-    "length_ft": "2",
-    "width_ft": "3",
+    "kind": "block_cutting",
+    "role": "operator",
+    "piece_sqft": "6",
+    "piece_rft": null,
     "cuts": 2,
     "quantity": 5,
+    "batti": null,
     "rates": {
       "cutting": "1.5"
     },
@@ -22,11 +24,13 @@
   },
   {
     "name": "cutting decimals",
-    "scheme": "cutting",
-    "length_ft": "1.1",
-    "width_ft": "1.1",
+    "kind": "block_cutting",
+    "role": "operator",
+    "piece_sqft": "1.21",
+    "piece_rft": null,
     "cuts": 1,
     "quantity": 1,
+    "batti": null,
     "rates": {
       "cutting": "1"
     },
@@ -43,11 +47,13 @@
   },
   {
     "name": "cutting 3dp sizes, 4dp rate",
-    "scheme": "cutting",
-    "length_ft": "2.125",
-    "width_ft": "1.875",
+    "kind": "block_cutting",
+    "role": "operator",
+    "piece_sqft": "3.984375",
+    "piece_rft": null,
     "cuts": 3,
     "quantity": 7,
+    "batti": null,
     "rates": {
       "cutting": "1.2345"
     },
@@ -64,11 +70,13 @@
   },
   {
     "name": "cutting rounds half up",
-    "scheme": "cutting",
-    "length_ft": "0.5",
-    "width_ft": "0.5",
+    "kind": "block_cutting",
+    "role": "operator",
+    "piece_sqft": "0.25",
+    "piece_rft": null,
     "cuts": 1,
     "quantity": 1,
+    "batti": null,
     "rates": {
       "cutting": "4.69"
     },
@@ -85,11 +93,13 @@
   },
   {
     "name": "cutting zero cuts pays nothing",
-    "scheme": "cutting",
-    "length_ft": "2",
-    "width_ft": "2",
+    "kind": "block_cutting",
+    "role": "operator",
+    "piece_sqft": "4",
+    "piece_rft": null,
     "cuts": 0,
     "quantity": 10,
+    "batti": null,
     "rates": {
       "cutting": "1.5"
     },
@@ -106,11 +116,13 @@
   },
   {
     "name": "cutting large batch",
-    "scheme": "cutting",
-    "length_ft": "3",
-    "width_ft": "2",
+    "kind": "block_cutting",
+    "role": "operator",
+    "piece_sqft": "6",
+    "piece_rft": null,
     "cuts": 3,
     "quantity": 5000,
+    "batti": null,
     "rates": {
       "cutting": "1.75"
     },
@@ -127,11 +139,13 @@
   },
   {
     "name": "loading basic",
-    "scheme": "loading",
-    "length_ft": "2",
-    "width_ft": "3",
+    "kind": "block_cutting",
+    "role": "loader",
+    "piece_sqft": "6",
+    "piece_rft": null,
     "cuts": 2,
     "quantity": 5,
+    "batti": null,
     "rates": {
       "loading": "0.5",
       "unloading": "0.25"
@@ -153,11 +167,13 @@
   },
   {
     "name": "loading zero cuts",
-    "scheme": "loading",
-    "length_ft": "2",
-    "width_ft": "2",
+    "kind": "block_cutting",
+    "role": "loader",
+    "piece_sqft": "4",
+    "piece_rft": null,
     "cuts": 0,
     "quantity": 1,
+    "batti": null,
     "rates": {
       "loading": "1",
       "unloading": "1"
@@ -179,11 +195,13 @@
   },
   {
     "name": "loading decimals",
-    "scheme": "loading",
-    "length_ft": "2.5",
-    "width_ft": "1.333",
+    "kind": "block_cutting",
+    "role": "loader",
+    "piece_sqft": "3.3325",
+    "piece_rft": null,
     "cuts": 1,
     "quantity": 9,
+    "batti": null,
     "rates": {
       "loading": "0.333",
       "unloading": "0.1667"
@@ -205,11 +223,13 @@
   },
   {
     "name": "missing unloading rate",
-    "scheme": "loading",
-    "length_ft": "1",
-    "width_ft": "1",
+    "kind": "block_cutting",
+    "role": "loader",
+    "piece_sqft": "1",
+    "piece_rft": null,
     "cuts": 1,
     "quantity": 1,
+    "batti": null,
     "rates": {
       "loading": "1",
       "unloading": null
@@ -224,11 +244,13 @@
   },
   {
     "name": "missing cutting rate",
-    "scheme": "cutting",
-    "length_ft": "1",
-    "width_ft": "1",
+    "kind": "block_cutting",
+    "role": "operator",
+    "piece_sqft": "1",
+    "piece_rft": null,
     "cuts": 1,
     "quantity": 1,
+    "batti": null,
     "rates": {
       "cutting": null
     },
@@ -237,6 +259,325 @@
       "total": null,
       "missing": [
         "cutting"
+      ]
+    }
+  },
+  {
+    "name": "double edge 2x2 operator",
+    "kind": "double_edge",
+    "role": "operator",
+    "piece_sqft": "4",
+    "piece_rft": "8",
+    "cuts": 0,
+    "quantity": 10,
+    "batti": null,
+    "rates": {
+      "cutting": "0.22"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "cutting",
+          "amount": "17.60"
+        }
+      ],
+      "total": "17.60",
+      "missing": []
+    }
+  },
+  {
+    "name": "double edge 2x1.5 operator",
+    "kind": "double_edge",
+    "role": "operator",
+    "piece_sqft": "3",
+    "piece_rft": "7",
+    "cuts": 0,
+    "quantity": 33,
+    "batti": null,
+    "rates": {
+      "cutting": "0.22"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "cutting",
+          "amount": "50.82"
+        }
+      ],
+      "total": "50.82",
+      "missing": []
+    }
+  },
+  {
+    "name": "double edge 2x1 loader",
+    "kind": "double_edge",
+    "role": "loader",
+    "piece_sqft": "2",
+    "piece_rft": "6",
+    "cuts": 0,
+    "quantity": 41,
+    "batti": null,
+    "rates": {
+      "unloading": "0.15"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "unloading",
+          "amount": "12.30"
+        }
+      ],
+      "total": "12.30",
+      "missing": []
+    }
+  },
+  {
+    "name": "double edge other size operator",
+    "kind": "double_edge",
+    "role": "operator",
+    "piece_sqft": "0.9375",
+    "piece_rft": "4.00",
+    "cuts": 0,
+    "quantity": 7,
+    "batti": null,
+    "rates": {
+      "cutting": "0.22"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "cutting",
+          "amount": "6.16"
+        }
+      ],
+      "total": "6.16",
+      "missing": []
+    }
+  },
+  {
+    "name": "double edge other size loader",
+    "kind": "double_edge",
+    "role": "loader",
+    "piece_sqft": "0.9375",
+    "piece_rft": "4.00",
+    "cuts": 0,
+    "quantity": 7,
+    "batti": null,
+    "rates": {
+      "unloading": "0.15"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "unloading",
+          "amount": "0.98"
+        }
+      ],
+      "total": "0.98",
+      "missing": []
+    }
+  },
+  {
+    "name": "single cutting 22.5 operator",
+    "kind": "single_cutting",
+    "role": "operator",
+    "piece_sqft": "4",
+    "piece_rft": "8",
+    "cuts": 0,
+    "quantity": 25,
+    "batti": null,
+    "rates": {
+      "cutting": "0.28"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "cutting",
+          "amount": "56.00"
+        }
+      ],
+      "total": "56.00",
+      "missing": []
+    }
+  },
+  {
+    "name": "single cutting 9x9 loader",
+    "kind": "single_cutting",
+    "role": "loader",
+    "piece_sqft": "1",
+    "piece_rft": "4",
+    "cuts": 0,
+    "quantity": 13,
+    "batti": null,
+    "rates": {
+      "unloading": "0.15"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "unloading",
+          "amount": "1.95"
+        }
+      ],
+      "total": "1.95",
+      "missing": []
+    }
+  },
+  {
+    "name": "single cutting 16x22 operator",
+    "kind": "single_cutting",
+    "role": "operator",
+    "piece_sqft": "3",
+    "piece_rft": "7",
+    "cuts": 0,
+    "quantity": 3,
+    "batti": null,
+    "rates": {
+      "cutting": "0.28"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "cutting",
+          "amount": "5.88"
+        }
+      ],
+      "total": "5.88",
+      "missing": []
+    }
+  },
+  {
+    "name": "polish single batti",
+    "kind": "table_polish",
+    "role": "operator",
+    "piece_sqft": "2",
+    "piece_rft": null,
+    "cuts": 0,
+    "quantity": 10,
+    "batti": 1,
+    "rates": {
+      "polish_1": "0.45"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "polish_1",
+          "amount": "9.00"
+        }
+      ],
+      "total": "9.00",
+      "missing": []
+    }
+  },
+  {
+    "name": "polish double batti",
+    "kind": "table_polish",
+    "role": "operator",
+    "piece_sqft": "2.25",
+    "piece_rft": null,
+    "cuts": 0,
+    "quantity": 7,
+    "batti": 2,
+    "rates": {
+      "polish_2": "0.90"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "polish_2",
+          "amount": "14.18"
+        }
+      ],
+      "total": "14.18",
+      "missing": []
+    }
+  },
+  {
+    "name": "polish 4 batti",
+    "kind": "table_polish",
+    "role": "operator",
+    "piece_sqft": "4",
+    "piece_rft": null,
+    "cuts": 0,
+    "quantity": 3,
+    "batti": 4,
+    "rates": {
+      "polish_4": "1.10"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "polish_4",
+          "amount": "13.20"
+        }
+      ],
+      "total": "13.20",
+      "missing": []
+    }
+  },
+  {
+    "name": "polish 5 batti",
+    "kind": "table_polish",
+    "role": "operator",
+    "piece_sqft": "2.99925",
+    "piece_rft": null,
+    "cuts": 0,
+    "quantity": 11,
+    "batti": 5,
+    "rates": {
+      "polish_5": "1.25"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "polish_5",
+          "amount": "41.24"
+        }
+      ],
+      "total": "41.24",
+      "missing": []
+    }
+  },
+  {
+    "name": "polish loader",
+    "kind": "table_polish",
+    "role": "loader",
+    "piece_sqft": "3.0",
+    "piece_rft": null,
+    "cuts": 0,
+    "quantity": 9,
+    "batti": 4,
+    "rates": {
+      "unloading": "0.15"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "unloading",
+          "amount": "4.05"
+        }
+      ],
+      "total": "4.05",
+      "missing": []
+    }
+  },
+  {
+    "name": "polish missing batti rate",
+    "kind": "table_polish",
+    "role": "operator",
+    "piece_sqft": "4",
+    "piece_rft": null,
+    "cuts": 0,
+    "quantity": 1,
+    "batti": 3,
+    "rates": {
+      "polish_3": null
+    },
+    "expected": {
+      "lines": [],
+      "total": null,
+      "missing": [
+        "polish_3"
       ]
     }
   }

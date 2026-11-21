@@ -27,11 +27,12 @@ def wages_xlsx(
     end: date,
     lang: Language = "en",
     worker_id: list[str] | None = Query(default=None),
+    machine_id: str | None = None,
     session: Session = Depends(get_session),
 ):
     """Excel file: wages per worker, plus every entry with its rate and wage."""
     check_period(start, end)
-    data = svc.wages_workbook(session, start, end, lang, worker_id)
+    data = svc.wages_workbook(session, start, end, lang, worker_id, machine_id)
     return _download(data, f"wages_{start.isoformat()}_{end.isoformat()}.xlsx")
 
 
@@ -42,9 +43,10 @@ def production_xlsx(
     group_by: GroupBy = "month",
     lang: Language = "en",
     worker_id: list[str] | None = Query(default=None),
+    machine_id: str | None = None,
     session: Session = Depends(get_session),
 ):
     """Excel file: production and wages per day, month or year."""
     check_period(start, end)
-    data = svc.production_workbook(session, start, end, group_by, lang, worker_id)
+    data = svc.production_workbook(session, start, end, group_by, lang, worker_id, machine_id)
     return _download(data, f"production_{group_by}_{start.isoformat()}_{end.isoformat()}.xlsx")

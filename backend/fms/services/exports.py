@@ -17,10 +17,10 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 from sqlalchemy.orm import Session
 
+from ..models import Worker
 from ..schemas import GroupBy, Language
-from .production import entry_wage
-from .rates import RateBook
-from .reports import entries_in_period, production_summary, wages_report
+from ..wages import Role, Unit, batti_of
+from .reports import pays_in_period, production_summary, wages_report
 from .settings import get_settings
 
 MONEY = "#,##0.00"
@@ -63,7 +63,7 @@ LABELS: dict[str, dict[str, str]] = {
         "cuts": "Cuts",
         "pieces": "Pieces",
         "area": "Area (sq ft)",
-        "rates": "Rate (₹/sq ft)",
+        "rates": "Rate (₹)",
         "wage": "Wages (₹)",
         "missing": "Entries without a rate",
         "notes": "Notes",
@@ -72,6 +72,17 @@ LABELS: dict[str, dict[str, str]] = {
         "cutting": "Cutting",
         "loading": "Loading",
         "unloading": "Unloading",
+        "polish": "Polish ({n} batti)",
+        "role": "Paid as",
+        "operator": "Operator",
+        "loader": "Loader",
+        "machine": "Machine",
+        "size": "Size",
+        "batti": "Batti",
+        "rft": "Running ft",
+        "per_sqft": "/sq ft",
+        "per_rft": "/running ft",
+        "no_loader": "Entries with no loader at the machine",
     },
     "hi": {
         "wages": "मज़दूरी",
@@ -90,7 +101,7 @@ LABELS: dict[str, dict[str, str]] = {
         "cuts": "कट",
         "pieces": "नग",
         "area": "क्षेत्रफल (वर्ग फुट)",
-        "rates": "दर (₹/वर्ग फुट)",
+        "rates": "दर (₹)",
         "wage": "मज़दूरी (₹)",
         "missing": "बिना दर वाली एंट्रियाँ",
         "notes": "टिप्पणी",
@@ -99,6 +110,17 @@ LABELS: dict[str, dict[str, str]] = {
         "cutting": "कटिंग",
         "loading": "लोडिंग",
         "unloading": "अनलोडिंग",
+        "polish": "पॉलिश ({n} बत्ती)",
+        "role": "किस काम का",
+        "operator": "ऑपरेटर",
+        "loader": "लोडर",
+        "machine": "मशीन",
+        "size": "साइज़",
+        "batti": "बत्ती",
+        "rft": "रनिंग फुट",
+        "per_sqft": "/वर्ग फुट",
+        "per_rft": "/रनिंग फुट",
+        "no_loader": "बिना लोडर वाली एंट्रियाँ",
     },
 }
 
@@ -110,6 +132,23 @@ TOTAL_BORDER = Border(top=Side(style="medium", color="000000"))
 
 def _name(en: str, hi: str | None, lang: str) -> str:
     return hi if lang == "hi" and hi else en
+
+
+def component_label(component: str, lang: str) -> str:
+    batti = batti_of(component)
+    t = LABELS[lang]
+    return t["polish"].format(n=batti) if batti else t.get(component, component)
+
+
+def _size(e, lang: str) -> str:
+    """How the entry's size is written: "2 × 1½ ft", "22½ × 22½ in"."""
+    if e.size_label and e.length_ft is None:
+        return f"{e.size_label} in"
+    if e.size_label:
+        return f"{e.size_label} ft"
+    if e.length_ft is not None and e.width_ft is not None:
+        return f"{format(e.length_ft.normalize(), 'f')} × {format(e.width_ft.normalize(), 'f')} ft"
+    return ""
 
 
 def _fmt_date(d: date) -> str:
@@ -189,13 +228,14 @@ def wages_workbook(
     end: date,
     lang: Language = "en",
     worker_ids: Sequence[str] | None = None,
+    machine_id: str | None = None,
 ) -> bytes:
-    """Sheet 1: wages per worker. Sheet 2: every entry with its rate and wage."""
+    """Sheet 1: wages per worker. Sheet 2: every wage earned, entry by entry."""
     t = LABELS[lang]
     settings = get_settings(session)
     factory = _name(settings.factory_name_en, settings.factory_name_hi, lang)
     period = f"{t['period']}: {_fmt_date(start)} – {_fmt_date(end)}"
-    report = wages_report(session, start, end, worker_ids)
+    report = wages_report(session, start, end, worker_ids, machine_id=machine_id)
 
     wb = Workbook()
     ws = wb.active
@@ -211,6 +251,7 @@ def wages_workbook(
             t["entries"],
             t["pieces"],
             t["area"],
+            t["rft"],
             t["cuts"],
             t["wage"],
             t["missing"],
@@ -222,69 +263,85 @@ def wages_workbook(
                 w.entry_count,
                 w.total_quantity,
                 w.total_area_sqft,
-                w.total_cuts,
+                w.total_rft or None,
+                w.total_cuts or None,
                 w.total_wage,
                 w.missing_rate_entries or None,
             ]
             for w in report.workers
         ],
-        {5: AREA, 7: MONEY},
+        {5: AREA, 6: AREA, 8: MONEY},
         total=[
             t["total"],
             None,
-            sum(w.entry_count for w in report.workers),
-            sum(w.total_quantity for w in report.workers),
-            report.total_area_sqft,
-            sum(w.total_cuts for w in report.workers),
+            None,
+            None,
+            None,
+            None,
+            None,
             report.total_wage,
             report.missing_rate_entries or None,
         ],
     )
+    if report.no_loader_entries:
+        r = ws.max_row + 2
+        ws.cell(row=r, column=1, value=t["no_loader"])
+        ws.cell(row=r, column=3, value=report.no_loader_entries)
 
     ws2 = wb.create_sheet(t["entries"])
     row = _title(ws2, [factory, f"{t['entries']} · {period}"])
-    book = RateBook.load(session)
     rows = []
-    for e in entries_in_period(session, start, end, worker_ids):
-        result, _ = entry_wage(e, book)
-        rates = (
-            "; ".join(f"{t[line.component]} {line.rate}" for line in result.lines)
-            if result
-            else t["rate_missing"]
-        )
-        rows.append(
-            [
-                e.entry_date,
-                _name(e.worker.name_en, e.worker.name_hi, lang),
-                _name(e.worker_type.name_en, e.worker_type.name_hi, lang),
-                e.length_ft,
-                e.width_ft,
-                e.cuts,
-                e.quantity,
-                e.area_sqft,
-                rates,
-                result.total if result else None,
-                e.notes,
-            ]
-        )
+    for e, pays, _ in pays_in_period(session, start, end, worker_ids, machine_id):
+        for pay in pays:
+            worker = (
+                e.worker if pay.worker_id == e.worker_id else session.get(Worker, pay.worker_id)
+            )
+            rates = (
+                "; ".join(
+                    f"{component_label(line.component, lang)} {line.rate}"
+                    f"{t['per_rft'] if line.unit is Unit.RFT else t['per_sqft']}"
+                    for line in pay.result.lines
+                )
+                if pay.result
+                else t["rate_missing"]
+            )
+            rows.append(
+                [
+                    e.entry_date,
+                    _name(worker.name_en, worker.name_hi, lang) if worker else "",
+                    t["loader"] if pay.role is Role.LOADER else t["operator"],
+                    _name(e.machine.name_en, e.machine.name_hi, lang),
+                    _size(e, lang),
+                    e.cuts or None,
+                    e.batti,
+                    e.quantity,
+                    e.area_sqft,
+                    e.rft_total,
+                    rates,
+                    pay.total,
+                    e.notes,
+                ]
+            )
     _table(
         ws2,
         row,
         [
             t["date"],
             t["worker"],
-            t["type"],
-            t["length"],
-            t["width"],
+            t["role"],
+            t["machine"],
+            t["size"],
             t["cuts"],
+            t["batti"],
             t["pieces"],
             t["area"],
+            t["rft"],
             t["rates"],
             t["wage"],
             t["notes"],
         ],
         rows,
-        {1: DATE, 8: AREA, 10: MONEY},
+        {1: DATE, 9: AREA, 10: AREA, 12: MONEY},
     )
     return _save(wb)
 
@@ -296,12 +353,13 @@ def production_workbook(
     group_by: GroupBy = "month",
     lang: Language = "en",
     worker_ids: Sequence[str] | None = None,
+    machine_id: str | None = None,
 ) -> bytes:
     """Production (and wages) per day, month or year."""
     t = LABELS[lang]
     settings = get_settings(session)
     factory = _name(settings.factory_name_en, settings.factory_name_hi, lang)
-    summary = production_summary(session, start, end, group_by, worker_ids)
+    summary = production_summary(session, start, end, group_by, worker_ids, machine_id)
 
     wb = Workbook()
     ws = wb.active
@@ -319,24 +377,26 @@ def production_workbook(
     _table(
         ws,
         row,
-        [t[group_by], t["entries"], t["pieces"], t["area"], t["cuts"], t["wage"]],
+        [t[group_by], t["entries"], t["pieces"], t["area"], t["rft"], t["cuts"], t["wage"]],
         [
             [
                 _period_label(b.period, group_by, lang),
                 b.entry_count,
                 b.total_quantity,
                 b.total_area_sqft,
+                b.total_rft,
                 b.total_cuts,
                 b.total_wage,
             ]
             for b in summary.buckets
         ],
-        {4: AREA, 6: MONEY},
+        {4: AREA, 5: AREA, 7: MONEY},
         total=[
             t["total"],
             total.entry_count,
             total.total_quantity,
             total.total_area_sqft,
+            total.total_rft,
             total.total_cuts,
             total.total_wage,
         ],

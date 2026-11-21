@@ -16,7 +16,7 @@ import { Fragment, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
 
-import { useSettings, useWagesReport } from '../api/hooks';
+import { useMachines, useSettings, useWagesReport, useWorkers } from '../api/hooks';
 import { ExportMenu } from '../components/ExportMenu';
 import type { Language, WorkerWages } from '../api/types';
 import {
@@ -27,7 +27,8 @@ import {
   type PeriodValue,
 } from '../components/common';
 import { localName } from '../i18n';
-import { formatDate, formatFeet, formatMoney, formatNumber } from '../lib/format';
+import { componentLabel, entryDetails, entrySize, lineBasis, lineRate } from '../lib/entryText';
+import { formatDate, formatMoney, formatNumber } from '../lib/format';
 import { defaultPreset } from '../lib/periods';
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -129,6 +130,15 @@ export default function WagesPage() {
         </Alert>
       )}
 
+      {(report.data?.no_loader_entries ?? 0) > 0 && (
+        <Alert color="orange" variant="light" icon={<IconAlertTriangle />} mb="md">
+          {t('wages.noLoaderAlert', { count: report.data!.no_loader_entries })}{' '}
+          <Anchor component={Link} to="/rates" size="sm">
+            {t('machines.changeLoader')}
+          </Anchor>
+        </Alert>
+      )}
+
       <Card withBorder>
         {report.isSuccess && rows.length === 0 ? (
           <Text c="dimmed" ta="center" py="xl">
@@ -154,7 +164,9 @@ export default function WagesPage() {
                   <Table.Th className="num">
                     {t('production.area')} ({t('units.sqft')})
                   </Table.Th>
-                  <Table.Th className="num">{t('wages.cuts')}</Table.Th>
+                  <Table.Th className="num">
+                    {t('wages.rft')}
+                  </Table.Th>
                   <Table.Th className="num">{t('wages.wage')}</Table.Th>
                 </Table.Tr>
               </Table.Thead>
@@ -194,7 +206,9 @@ export default function WagesPage() {
                       <Table.Td className="num">{r.entry_count}</Table.Td>
                       <Table.Td className="num">{r.total_quantity}</Table.Td>
                       <Table.Td className="num">{formatNumber(r.total_area_sqft)}</Table.Td>
-                      <Table.Td className="num">{r.total_cuts}</Table.Td>
+                      <Table.Td className="num">
+                        {Number(r.total_rft) > 0 ? formatNumber(r.total_rft) : '—'}
+                      </Table.Td>
                       <Table.Td className="num">
                         <Text fw={700}>{formatMoney(r.total_wage)}</Text>
                         {r.missing_rate_entries > 0 && (
@@ -223,40 +237,65 @@ export default function WagesPage() {
 }
 
 function WorkerEntries({ row }: { row: WorkerWages }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const machines = useMachines(true).data ?? [];
+  const workers = useWorkers(true).data ?? [];
+  const local = (x: { name_en: string; name_hi: string | null } | undefined) =>
+    x ? localName(x.name_en, x.name_hi, i18n.language) : '';
   return (
     <Table withRowBorders={false} fz="sm">
       <Table.Thead>
         <Table.Tr>
           <Table.Th>{t('common.date')}</Table.Th>
-          <Table.Th className="num">{t('production.size')}</Table.Th>
-          <Table.Th className="num">{t('production.cuts')}</Table.Th>
+          <Table.Th>{t('production.machine')}</Table.Th>
+          <Table.Th>{t('production.size')}</Table.Th>
           <Table.Th className="num">{t('production.quantity')}</Table.Th>
-          <Table.Th className="num">{t('production.area')}</Table.Th>
-          <Table.Th>{t('rates.component')}</Table.Th>
+          <Table.Th className="num">{t('slip.basis')}</Table.Th>
+          <Table.Th>{t('rates.rate')}</Table.Th>
           <Table.Th className="num">{t('production.wage')}</Table.Th>
         </Table.Tr>
       </Table.Thead>
       <Table.Tbody>
-        {(row.entries ?? []).map((e) => (
-          <Table.Tr key={e.id}>
-            <Table.Td>{formatDate(e.entry_date)}</Table.Td>
-            <Table.Td className="num">
-              {formatFeet(e.length_ft)} × {formatFeet(e.width_ft)}
-            </Table.Td>
-            <Table.Td className="num">{e.cuts}</Table.Td>
-            <Table.Td className="num">{e.quantity}</Table.Td>
-            <Table.Td className="num">{formatNumber(e.area_sqft)}</Table.Td>
-            <Table.Td>
-              {e.wage_lines.length
-                ? e.wage_lines
-                    .map((l) => `${t(`components.${l.component}`)} ${formatMoney(l.amount)}`)
-                    .join(' + ')
-                : t('slip.rateMissing')}
-            </Table.Td>
-            <Table.Td className="num">{formatMoney(e.wage)}</Table.Td>
-          </Table.Tr>
-        ))}
+        {(row.entries ?? []).map((e) => {
+          const details = entryDetails(e, t);
+          return (
+            <Table.Tr key={`${e.id}-${e.paid_as}`}>
+              <Table.Td style={{ whiteSpace: 'nowrap' }}>{formatDate(e.entry_date)}</Table.Td>
+              <Table.Td>
+                {local(machines.find((m) => m.id === e.machine_id))}
+                {e.paid_as === 'loader' && (
+                  <Text size="xs" c="dimmed">
+                    {t('slip.operator')}: {local(workers.find((w) => w.id === e.worker_id))}
+                  </Text>
+                )}
+              </Table.Td>
+              <Table.Td>
+                {entrySize(e, t)}
+                {details && (
+                  <Text size="xs" c="dimmed">
+                    {details}
+                  </Text>
+                )}
+              </Table.Td>
+              <Table.Td className="num">{e.quantity}</Table.Td>
+              <Table.Td className="num">
+                {e.wage_lines.map((l) => (
+                  <div key={l.component}>{lineBasis(l, t)}</div>
+                ))}
+              </Table.Td>
+              <Table.Td>
+                {e.wage_lines.length
+                  ? e.wage_lines.map((l) => (
+                      <div key={l.component}>
+                        {componentLabel(t, l.component)} {lineRate(l, t)}
+                      </div>
+                    ))
+                  : t('slip.rateMissing')}
+              </Table.Td>
+              <Table.Td className="num">{formatMoney(e.wage)}</Table.Td>
+            </Table.Tr>
+          );
+        })}
       </Table.Tbody>
     </Table>
   );

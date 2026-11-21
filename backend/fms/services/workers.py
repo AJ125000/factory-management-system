@@ -4,7 +4,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from ..errors import Conflict, Invalid, NotFound
-from ..models import ProductionEntry, Worker
+from ..models import LoaderAssignment, ProductionEntry, Worker
 from ..schemas import WorkerCreate, WorkerUpdate
 from ..util import utcnow
 from . import audit
@@ -150,12 +150,25 @@ def count_entries(session: Session, worker_id: str) -> int:
     )
 
 
+def count_assignments(session: Session, worker_id: str) -> int:
+    return (
+        session.scalar(
+            select(func.count())
+            .select_from(LoaderAssignment)
+            .where(LoaderAssignment.worker_id == worker_id)
+        )
+        or 0
+    )
+
+
 def delete_worker(session: Session, worker_id: str, confirm_entries: int) -> int:
     """Permanently delete a worker and all their production entries.
 
     `confirm_entries` must equal the number of entries that will be deleted - it proves
     the owner saw the real impact (and that no entries were added since they looked).
     The full data is kept in the audit log, so a mistaken delete can be recovered.
+    A loader's machine assignments become "no loader" for the same dates, so their
+    loading pay isn't moved to whoever loaded at that machine before them.
     """
     worker = get_worker(session, worker_id)
     entries = list(
@@ -182,6 +195,14 @@ def delete_worker(session: Session, worker_id: str, confirm_entries: int) -> int
     for entry in entries:
         audit.tombstone(session, "production_entry", entry.id)
     audit.tombstone(session, ENTITY, worker.id)
+    for assignment in session.scalars(
+        select(LoaderAssignment).where(LoaderAssignment.worker_id == worker_id)
+    ):
+        assignment.worker_id = None
+    for entry in session.scalars(
+        select(ProductionEntry).where(ProductionEntry.loader_id == worker_id)
+    ):
+        entry.loader_id = None
 
     session.execute(delete(ProductionEntry).where(ProductionEntry.worker_id == worker_id))
     session.delete(worker)

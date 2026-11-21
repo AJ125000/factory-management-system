@@ -14,7 +14,7 @@ import { useSyncExternalStore } from 'react';
 import { ApiError, api } from '../api/client';
 import { checkHub, hubState } from './hub';
 
-export type Entity = 'production' | 'worker' | 'rate';
+export type Entity = 'production' | 'worker' | 'rate' | 'size' | 'loader_assignment';
 export type Action = 'create' | 'update' | 'delete' | 'archive' | 'restore';
 
 export interface OutboxItem {

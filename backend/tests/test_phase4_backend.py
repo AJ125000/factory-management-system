@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 
 from fms import tailscale
-from fms.wages import MissingRateError, StoneEntry, calculate_wage
+from fms.services.machines import BLOCK_CUTTING_ID
+from fms.wages import MissingRateError, Piece, calculate_wage
 
 CASES = json.loads(
     (Path(__file__).parents[2] / "shared" / "wage-cases.json").read_text(encoding="utf-8")
@@ -16,17 +17,22 @@ CASES = json.loads(
 @pytest.mark.parametrize("case", CASES, ids=[c["name"] for c in CASES])
 def test_shared_wage_cases(case):
     """The same cases are checked by the app's tests, so phone and laptop always agree."""
-    entry = StoneEntry(
-        Decimal(case["length_ft"]), Decimal(case["width_ft"]), case["cuts"], case["quantity"]
+    rft = case["piece_rft"]
+    entry = Piece(
+        Decimal(case["piece_sqft"]),
+        None if rft is None else Decimal(rft),
+        case["cuts"],
+        case["quantity"],
+        case["batti"],
     )
     rates = {k: None if v is None else Decimal(v) for k, v in case["rates"].items()}
     expected = case["expected"]
     if expected["missing"]:
         with pytest.raises(MissingRateError) as exc:
-            calculate_wage(case["scheme"], entry, rates)
+            calculate_wage(case["kind"], case["role"], entry, rates)
         assert [str(c) for c in exc.value.components] == expected["missing"]
     else:
-        result = calculate_wage(case["scheme"], entry, rates)
+        result = calculate_wage(case["kind"], case["role"], entry, rates)
         assert str(result.total) == expected["total"]
         assert [str(line.amount) for line in result.lines] == [
             line["amount"] for line in expected["lines"]
@@ -46,14 +52,14 @@ def test_device_chosen_ids_and_safe_retries(api):
     rate_id = str(uuid.uuid4())
     rate = {
         "id": rate_id,
-        "worker_type_id": api.type_id["machine_operator"],
+        "machine_id": BLOCK_CUTTING_ID,
         "component": "cutting",
-        "rate_per_sqft": "1.5",
+        "rate": "1.5",
         "effective_from": "2026-01-01",
     }
     api.ok(api.c.post("/api/rates", json=rate), 201)
     api.ok(api.c.post("/api/rates", json=rate), 201)  # would be a duplicate-date conflict otherwise
-    assert len(api.ok(api.c.get("/api/rates"))) == 1
+    assert len(api.ok(api.c.get("/api/rates", params={"machine_id": BLOCK_CUTTING_ID}))) == 1
 
     entry_id = str(uuid.uuid4())
     entry = {

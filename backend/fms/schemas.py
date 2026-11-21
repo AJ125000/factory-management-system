@@ -12,9 +12,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .wages import PayScheme, RateComponent
+from .wages import MAX_BATTI, MachineKind, Role, Unit
 
 Dimension = Annotated[Decimal, Field(gt=0, le=100, max_digits=7, decimal_places=3)]
+SizeValue = Annotated[Decimal, Field(gt=0, le=1000, max_digits=8, decimal_places=3)]
+Batti = Annotated[int, Field(ge=1, le=MAX_BATTI)]
+Component = Annotated[str, Field(pattern=r"^[a-z_0-9]{1,20}$")]
 RateValue = Annotated[Decimal, Field(ge=0, le=100000, max_digits=10, decimal_places=4)]
 Cuts = Annotated[int, Field(ge=0, le=100)]
 Quantity = Annotated[int, Field(ge=1, le=100000)]
@@ -34,11 +37,11 @@ class Out(BaseModel):
 class WorkerTypeCreate(In):
     name_en: Annotated[str, Field(min_length=1, max_length=80)]
     name_hi: Annotated[str, Field(max_length=80)] | None = None
-    pay_scheme: PayScheme
+    role: Role
 
 
 class WorkerTypeUpdate(In):
-    # pay_scheme is fixed once created: changing it would invalidate existing rates.
+    # role is fixed once created: changing it would change how past entries are paid.
     name_en: Annotated[str, Field(min_length=1, max_length=80)] | None = None
     name_hi: Annotated[str, Field(max_length=80)] | None = None
     is_active: bool | None = None
@@ -49,8 +52,78 @@ class WorkerTypeOut(Out):
     code: str
     name_en: str
     name_hi: str | None
-    pay_scheme: PayScheme
+    role: Role
     is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+# -------------------------------------------------------------------- machines
+class MachineUpdate(In):
+    name_en: Annotated[str, Field(min_length=1, max_length=80)] | None = None
+    name_hi: Annotated[str, Field(max_length=80)] | None = None
+    is_active: bool | None = None
+
+
+class MachineOut(Out):
+    id: str
+    code: str
+    kind: MachineKind
+    name_en: str
+    name_hi: str | None
+    sort_order: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class MachineSizeCreate(In):
+    id: UUID | None = None
+    machine_id: str
+    length: SizeValue
+    width: SizeValue
+    rft: SizeValue
+    sqft: SizeValue
+
+
+class MachineSizeUpdate(In):
+    length: SizeValue | None = None
+    width: SizeValue | None = None
+    rft: SizeValue | None = None
+    sqft: SizeValue | None = None
+
+
+class MachineSizeOut(Out):
+    id: str
+    machine_id: str
+    length: Decimal
+    width: Decimal
+    rft: Decimal
+    sqft: Decimal
+    created_at: datetime
+    updated_at: datetime
+
+
+class LoaderAssignmentCreate(In):
+    id: UUID | None = None
+    machine_id: str
+    worker_id: str | None  # None: no loader at this machine from this date
+    effective_from: date
+    note: Notes | None = None
+
+
+class LoaderAssignmentUpdate(In):
+    worker_id: str | None = None  # an explicit null means "no loader"
+    effective_from: date | None = None
+    note: Notes | None = None
+
+
+class LoaderAssignmentOut(Out):
+    id: str
+    machine_id: str
+    worker_id: str | None
+    effective_from: date
+    note: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -96,30 +169,33 @@ class WorkerOut(Out):
 class DeleteImpact(BaseModel):
     worker_id: str
     production_entries: int
+    # Machines this worker is (or was) the loader at; those periods become "no loader".
+    loader_assignments: int = 0
 
 
 # ----------------------------------------------------------------------- rates
 class RateCreate(In):
     # Set by the device that created the record (see services/_common.py: existing_replay).
     id: UUID | None = None
-    worker_type_id: str
-    component: RateComponent
-    rate_per_sqft: RateValue
+    machine_id: str
+    component: Component
+    rate: RateValue
     effective_from: date
     note: Notes | None = None
 
 
 class RateUpdate(In):
-    rate_per_sqft: RateValue | None = None
+    rate: RateValue | None = None
     effective_from: date | None = None
     note: Notes | None = None
 
 
 class RateOut(Out):
     id: str
-    worker_type_id: str
-    component: RateComponent
-    rate_per_sqft: Decimal
+    machine_id: str
+    component: str
+    unit: Unit
+    rate: Decimal
     effective_from: date
     note: str | None
     created_at: datetime
@@ -127,9 +203,10 @@ class RateOut(Out):
 
 
 class CurrentRateOut(BaseModel):
-    worker_type_id: str
-    component: RateComponent
-    rate_per_sqft: Decimal | None
+    machine_id: str
+    component: str
+    unit: Unit
+    rate: Decimal | None
     effective_from: date | None
 
 
@@ -138,28 +215,39 @@ class ProductionCreate(In):
     # Set by the device that created the record (see services/_common.py: existing_replay).
     id: UUID | None = None
     worker_id: str
+    # Leaving it out means the original cutting machine (entries made before machines).
+    machine_id: str | None = None
     entry_date: date
-    length_ft: Dimension
-    width_ft: Dimension
-    cuts: Cuts
+    length_ft: Dimension | None = None
+    width_ft: Dimension | None = None
+    size_id: str | None = None
+    cuts: Cuts = 0
+    batti: Batti | None = None
     quantity: Quantity
+    # Someone filling in for the machine's usual loader on this entry only.
+    loader_id: str | None = None
     notes: Notes | None = None
 
 
 class ProductionUpdate(In):
     worker_id: str | None = None
+    machine_id: str | None = None
     entry_date: date | None = None
     length_ft: Dimension | None = None
     width_ft: Dimension | None = None
+    size_id: str | None = None
     cuts: Cuts | None = None
+    batti: Batti | None = None
     quantity: Quantity | None = None
+    loader_id: str | None = None
     notes: Notes | None = None
 
 
 class WageLineOut(BaseModel):
-    component: RateComponent
-    effective_area_sqft: Decimal
-    rate_per_sqft: Decimal
+    component: str
+    basis: Decimal  # the sq ft or running ft the rate is multiplied by
+    unit: Unit
+    rate: Decimal
     amount: Decimal
 
 
@@ -167,16 +255,33 @@ class ProductionOut(Out):
     id: str
     worker_id: str
     worker_type_id: str
+    machine_id: str
     entry_date: date
-    length_ft: Decimal
-    width_ft: Decimal
+    length_ft: Decimal | None
+    width_ft: Decimal | None
+    size_id: str | None
+    size_label: str | None
+    piece_sqft: Decimal
+    piece_rft: Decimal | None
     cuts: int
+    batti: int | None
     quantity: int
+    loader_id: str | None  # only when chosen on this entry
     notes: str | None
     area_sqft: Decimal
+    rft_total: Decimal | None
+    # The pay of `paid_worker_id` in the role `paid_as` (the operator, in entry lists).
+    paid_as: Role = Role.OPERATOR
+    paid_worker_id: str | None = None
     wage: Decimal | None = None
     wage_lines: list[WageLineOut] = []
-    missing_rates: list[RateComponent] = []
+    missing_rates: list[str] = []
+    # The loader paid from this entry (the machine's loader on that date, or loader_id).
+    loader_worker_id: str | None = None
+    loader_wage: Decimal | None = None
+    loader_wage_lines: list[WageLineOut] = []
+    loader_missing_rates: list[str] = []
+    no_loader: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -188,18 +293,30 @@ class ProductionPage(BaseModel):
 
 class WagePreviewIn(In):
     worker_id: str
+    machine_id: str | None = None
     entry_date: date
-    length_ft: Dimension
-    width_ft: Dimension
-    cuts: Cuts
+    length_ft: Dimension | None = None
+    width_ft: Dimension | None = None
+    size_id: str | None = None
+    cuts: Cuts = 0
+    batti: Batti | None = None
     quantity: Quantity
+    loader_id: str | None = None
 
 
 class WagePreviewOut(BaseModel):
     area_sqft: Decimal
+    rft_total: Decimal | None
+    piece_sqft: Decimal
+    piece_rft: Decimal | None
     wage: Decimal | None
     wage_lines: list[WageLineOut]
-    missing_rates: list[RateComponent]
+    missing_rates: list[str]
+    loader_worker_id: str | None
+    loader_wage: Decimal | None
+    loader_wage_lines: list[WageLineOut]
+    loader_missing_rates: list[str]
+    no_loader: bool
 
 
 # -------------------------------------------------------------------- settings
@@ -238,10 +355,12 @@ class WorkerWagesOut(BaseModel):
     name_hi: str | None
     worker_type_name_en: str
     worker_type_name_hi: str | None
+    role: Role
     is_archived: bool
     entry_count: int
     total_quantity: int
     total_area_sqft: Decimal
+    total_rft: Decimal
     total_cuts: int
     total_wage: Decimal
     missing_rate_entries: int
@@ -255,6 +374,8 @@ class WagesReportOut(BaseModel):
     total_wage: Decimal
     total_area_sqft: Decimal
     missing_rate_entries: int
+    # Entries whose machine had no loader on that date (nobody was paid for loading).
+    no_loader_entries: int = 0
 
 
 GroupBy = Literal["day", "month", "year"]
@@ -265,6 +386,7 @@ class ProductionBucketOut(BaseModel):
     entry_count: int
     total_quantity: int
     total_area_sqft: Decimal
+    total_rft: Decimal
     total_cuts: int
     total_wage: Decimal
     missing_rate_entries: int

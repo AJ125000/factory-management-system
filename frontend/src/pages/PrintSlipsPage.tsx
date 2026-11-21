@@ -7,10 +7,11 @@ import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router';
 
-import { useSettings, useWagesReport } from '../api/hooks';
-import type { AppSettings, Language, WorkerWages } from '../api/types';
+import { useMachines, useSettings, useWagesReport, useWorkers } from '../api/hooks';
+import type { AppSettings, Language, Machine, Worker, WorkerWages } from '../api/types';
 import { localName } from '../i18n';
-import { formatAmount, formatDate, formatFeet, formatMoney, formatNumber, formatRate, todayISO } from '../lib/format';
+import { componentLabel, entryDetails, entrySize, lineBasis, lineRate } from '../lib/entryText';
+import { formatAmount, formatDate, formatMoney, formatNumber, todayISO } from '../lib/format';
 
 export default function PrintSlipsPage() {
   const { t: uiT, i18n } = useTranslation();
@@ -23,6 +24,8 @@ export default function PrintSlipsPage() {
   const workerIds = params.get('workers')?.split(',').filter(Boolean);
 
   const settings = useSettings().data;
+  const machines = useMachines(true).data ?? [];
+  const workers = useWorkers(true).data ?? [];
   const report = useWagesReport(start, end, { includeEntries: true, workerIds });
   const t = i18n.getFixedT(lang); // the slip's language, independent of the app's
 
@@ -92,7 +95,7 @@ export default function PrintSlipsPage() {
         </Text>
       ) : (
         rows.map((row) => (
-          <Slip key={row.worker_id} row={row} t={t} lang={lang} settings={settings} start={start} end={end} />
+          <Slip key={row.worker_id} row={row} t={t} lang={lang} settings={settings} start={start} end={end} machines={machines} workers={workers} />
         ))
       )}
     </div>
@@ -106,6 +109,8 @@ function Slip({
   settings,
   start,
   end,
+  machines,
+  workers,
 }: {
   row: WorkerWages;
   t: TFunction;
@@ -113,8 +118,18 @@ function Slip({
   settings: AppSettings;
   start: string;
   end: string;
+  machines: Machine[];
+  workers: Worker[];
 }) {
   const entries = row.entries ?? [];
+  const machineName = (id: string) => {
+    const m = machines.find((x) => x.id === id);
+    return m ? localName(m.name_en, m.name_hi, lang) : '';
+  };
+  const workerName = (id: string) => {
+    const w = workers.find((x) => x.id === id);
+    return w ? localName(w.name_en, w.name_hi, lang) : '';
+  };
   return (
     <section className="slip">
       <header className="slip-header">
@@ -144,51 +159,73 @@ function Slip({
         <thead>
           <tr>
             <th>{t('slip.date')}</th>
-            <th className="num">{t('slip.size')}</th>
-            <th className="num">{t('slip.cuts')}</th>
+            <th>{t('slip.machine')}</th>
+            <th>{t('slip.size')}</th>
             <th className="num">{t('slip.qty')}</th>
-            <th className="num">{t('slip.area')}</th>
+            <th className="num">{t('slip.basis')}</th>
             <th className="num">{t('slip.rate')}</th>
             <th className="num">{t('slip.amount')}</th>
           </tr>
         </thead>
         <tbody>
-          {entries.map((e) => (
-            <tr key={e.id}>
-              <td>{formatDate(e.entry_date, 'short')}</td>
-              <td className="num">
-                {formatFeet(e.length_ft)} × {formatFeet(e.width_ft)}
-              </td>
-              <td className="num">{e.cuts}</td>
-              <td className="num">{e.quantity}</td>
-              <td className="num">{formatNumber(e.area_sqft)}</td>
-              <td className="num">
-                {e.wage_lines.length === 0
-                  ? t('slip.rateMissing')
-                  : e.wage_lines.length === 1
-                    ? formatRate(e.wage_lines[0].rate_per_sqft).replace('₹', '')
+          {entries.map((e) => {
+            const details = entryDetails(e, t);
+            const many = e.wage_lines.length > 1;
+            return (
+              <tr key={`${e.id}-${e.paid_as}`}>
+                <td>{formatDate(e.entry_date, 'short')}</td>
+                <td>
+                  {machineName(e.machine_id)}
+                  {e.paid_as === 'loader' && (
+                    <div className="sub">
+                      {t('slip.operator')}: {workerName(e.worker_id)}
+                    </div>
+                  )}
+                </td>
+                <td>
+                  {entrySize(e, t)}
+                  {details && <div className="sub">{details}</div>}
+                </td>
+                <td className="num">{e.quantity}</td>
+                <td className="num">
+                  {e.wage_lines.map((l) => (
+                    <div key={l.component} className={many ? 'sub' : undefined}>
+                      {many && `${componentLabel(t, l.component)} `}
+                      {lineBasis(l, t)}
+                    </div>
+                  ))}
+                </td>
+                <td className="num">
+                  {e.wage_lines.length === 0
+                    ? t('slip.rateMissing')
                     : e.wage_lines.map((l) => (
-                        <div key={l.component} className="sub">
-                          {t(`components.${l.component}`)} {formatRate(l.rate_per_sqft).replace('₹', '')}
+                        <div key={l.component} className={many ? 'sub' : undefined}>
+                          {lineRate(l, t).replace('₹', '')}
                         </div>
                       ))}
-              </td>
-              <td className="num">
-                {e.wage === null ? '—' : formatAmount(e.wage)}
-                {e.wage_lines.length > 1 && (
-                  <div className="sub">
-                    {e.wage_lines.map((l) => formatAmount(l.amount)).join(' + ')}
-                  </div>
-                )}
-              </td>
-            </tr>
-          ))}
+                </td>
+                <td className="num">
+                  {e.wage === null ? '—' : formatAmount(e.wage)}
+                  {many && (
+                    <div className="sub">{e.wage_lines.map((l) => formatAmount(l.amount)).join(' + ')}</div>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
         <tfoot>
           <tr>
             <td colSpan={3}>{t('common.total')}</td>
             <td className="num">{row.total_quantity}</td>
-            <td className="num">{formatNumber(row.total_area_sqft)}</td>
+            <td className="num">
+              {formatNumber(row.total_area_sqft)} {t('units.sqft')}
+              {Number(row.total_rft) > 0 && (
+                <div className="sub">
+                  {formatNumber(row.total_rft)} {t('units.rft')}
+                </div>
+              )}
+            </td>
             <td className="num slip-total">{t('slip.totalWage')}</td>
             <td className="num slip-total">{formatMoney(row.total_wage)}</td>
           </tr>

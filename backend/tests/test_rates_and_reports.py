@@ -1,17 +1,20 @@
 from datetime import date, timedelta
 
+from conftest import MACHINES
 
-def test_rate_component_must_match_worker_type(api):
+
+def test_rate_component_must_match_machine(api):
     resp = api.c.post(
         "/api/rates",
         json={
-            "worker_type_id": api.type_id["machine_operator"],
-            "component": "loading",
-            "rate_per_sqft": "1",
+            "machine_id": MACHINES["double_edge"],
+            "component": "loading",  # double edge loaders are paid for unloading only
+            "rate": "1",
             "effective_from": "2026-01-01",
         },
     )
     assert resp.status_code == 422
+    assert resp.json()["error"]["details"]["reason"] == "component_not_allowed"
 
 
 def test_duplicate_effective_date_conflicts(api):
@@ -19,9 +22,9 @@ def test_duplicate_effective_date_conflicts(api):
     resp = api.c.post(
         "/api/rates",
         json={
-            "worker_type_id": api.type_id["loader"],
+            "machine_id": MACHINES["block"],
             "component": "loading",
-            "rate_per_sqft": "0.6",
+            "rate": "0.6",
             "effective_from": "2026-01-01",
         },
     )
@@ -32,11 +35,14 @@ def test_current_rates(api):
     api.rate("machine_operator", "cutting", "1.5", "2026-01-01")
     api.rate("machine_operator", "cutting", "2", "2026-03-01")
     current = api.ok(api.c.get("/api/rates/current", params={"on": "2026-02-15"}))
-    cutting = next(r for r in current if r["component"] == "cutting")
-    assert cutting["rate_per_sqft"] == "1.5"
+    cutting = next(
+        r for r in current if r["component"] == "cutting" and r["machine_id"] == MACHINES["block"]
+    )
+    assert cutting["rate"] == "1.5"
+    assert cutting["unit"] == "sqft"
     assert cutting["effective_from"] == "2026-01-01"
     loading = next(r for r in current if r["component"] == "loading")
-    assert loading["rate_per_sqft"] is None
+    assert loading["rate"] is None
 
 
 def test_rate_increase_does_not_change_past_wages(api):
@@ -54,57 +60,66 @@ def test_rate_increase_does_not_change_past_wages(api):
 
 
 def test_changing_worker_type_keeps_past_wages(api):
-    w = api.worker("Dinesh", "loader")
-    api.rate("loader", "loading", "0.5", "2026-01-01")
-    api.rate("loader", "unloading", "0.25", "2026-01-01")
-    api.rate("machine_operator", "cutting", "1.5", "2026-01-01")
-    api.entry(w, "2026-01-10")  # loader: 37.50
+    w = api.worker("Dinesh")
+    x = api.worker("Ganesh")
+    api.rate("block", "loading", "0.5", "2026-01-01")
+    api.rate("block", "unloading", "0.25", "2026-01-01")
+    api.rate("block", "cutting", "1.5", "2026-01-01")
+    api.entry(w, "2026-01-10")  # operator: 180.00
 
-    api.ok(
-        api.c.patch(
-            f"/api/workers/{w['id']}", json={"worker_type_id": api.type_id["machine_operator"]}
-        )
-    )
-    api.entry(w, "2026-01-11")  # now operator: 180.00
+    api.ok(api.c.patch(f"/api/workers/{w['id']}", json={"worker_type_id": api.type_id["loader"]}))
+    api.assign("block", w, "2026-01-11")
+    api.entry(x, "2026-01-11")  # Dinesh now loads at the machine: 37.50
 
-    report = api.wages("2026-01-01", "2026-01-31", include_entries=True)
+    report = api.wages("2026-01-01", "2026-01-31", include_entries=True, worker_id=w["id"])
     [row] = report["workers"]
-    assert [e["wage"] for e in row["entries"]] == ["37.50", "180.00"]
+    assert [(e["paid_as"], e["wage"]) for e in row["entries"]] == [
+        ("operator", "180.00"),
+        ("loader", "37.50"),
+    ]
     assert row["total_wage"] == "217.50"
 
 
 def test_wages_report_totals_and_breakdown(api):
     a = api.worker("Amit", name_hi="अमित")
     b = api.worker("Bharat", "loader")
+    api.assign("block", b, "2026-01-01")
     api.rate("machine_operator", "cutting", "1.5", "2026-01-01")
     api.rate("loader", "loading", "0.5", "2026-01-01")
     api.rate("loader", "unloading", "0.25", "2026-01-01")
-    api.entry(a, "2026-01-02")
+    api.entry(a, "2026-01-02")  # Amit 180.00, Bharat 15.00 + 22.50
     api.entry(
         a, "2026-01-03", length="1.5", width="1", cuts=1, quantity=10
-    )  # 2*1.5*1*10 = 30 -> 45.00
-    api.entry(b, "2026-01-02")
+    )  # Amit 2*1.5*1*10 = 30 -> 45.00; Bharat 15*0.5 + 15*2*0.25 = 15.00
     api.entry(a, "2026-02-01")  # outside the period
 
     report = api.wages("2026-01-01", "2026-01-31", include_entries=True)
     amit, bharat = report["workers"]
     assert amit["name_hi"] == "अमित"
+    assert amit["role"] == "operator"
     assert amit["entry_count"] == 2
     assert amit["total_wage"] == "225.00"
     assert amit["total_area_sqft"] == "45.00"  # 6*5 + 1.5*10
     assert amit["total_cuts"] == 20  # 2*5 + 1*10
-    assert bharat["total_wage"] == "37.50"
-    assert report["total_wage"] == "262.50"
-    line = bharat["entries"][0]["wage_lines"][1]
-    assert line == {
+    assert bharat["role"] == "loader"
+    assert bharat["entry_count"] == 2
+    assert bharat["total_wage"] == "52.50"
+    assert report["total_wage"] == "277.50"
+    assert report["total_area_sqft"] == "45.00"  # produced once, not once per worker paid
+    first = bharat["entries"][0]
+    assert (first["paid_as"], first["paid_worker_id"]) == ("loader", b["id"])
+    assert first["wage"] == "37.50"
+    assert first["wage_lines"][1] == {
         "component": "unloading",
-        "effective_area_sqft": "90",
-        "rate_per_sqft": "0.25",
+        "basis": "90",
+        "unit": "sqft",
+        "rate": "0.25",
         "amount": "22.50",
     }
 
     only_bharat = api.wages("2026-01-01", "2026-01-31", worker_id=b["id"])
     assert [r["name_en"] for r in only_bharat["workers"]] == ["Bharat"]
+    assert only_bharat["total_wage"] == "52.50"
 
 
 def test_missing_rates_are_flagged_not_hidden(api):

@@ -7,6 +7,7 @@ from openpyxl import load_workbook
 
 from fms.config import Settings
 from fms.main import create_app
+from fms.services.machines import DOUBLE_EDGE_ID
 
 
 def _seed(api):
@@ -15,9 +16,9 @@ def _seed(api):
     api.rate("machine_operator", "cutting", "1.5", "2026-01-01")
     api.rate("loader", "loading", "0.5", "2026-01-01")
     api.rate("loader", "unloading", "0.25", "2026-01-01")
-    api.entry(a, "2026-01-05")  # 180.00
-    api.entry(a, "2026-02-03")  # 180.00
-    api.entry(b, "2026-01-06")  # 37.50
+    api.assign("block", b, "2026-01-01")
+    api.entry(a, "2026-01-05")  # Ramesh 180.00, Suresh (loader) 37.50
+    api.entry(a, "2026-02-03")  # Ramesh 180.00, Suresh 37.50
     return a, b
 
 
@@ -43,17 +44,21 @@ def test_wages_excel_in_english(api):
     rows = _rows(wb["Wages"])
     assert rows[0][0] == "Kota Stone Factory"
     header = rows[2]
-    assert header[0] == "Worker" and header[6] == "Wages (₹)"
+    assert header[0] == "Worker" and header[7] == "Wages (₹)"
     ramesh, suresh, total = rows[3], rows[4], rows[5]
     assert ramesh[:2] == ["Ramesh", "Machine Operator"]
-    assert Decimal(str(ramesh[6])) == Decimal("180")  # a real number, not text
-    assert suresh[0] == "Suresh"
-    assert total[0] == "Total" and Decimal(str(total[6])) == Decimal("217.5")
+    assert Decimal(str(ramesh[7])) == Decimal("180")  # a real number, not text
+    assert suresh[:2] == ["Suresh", "Loader"]
+    assert Decimal(str(suresh[7])) == Decimal("37.5")
+    assert total[0] == "Total" and Decimal(str(total[7])) == Decimal("217.5")
 
     entries = _rows(wb["Entries"])
-    first = entries[3]
+    first, loader = entries[3], entries[4]
     assert first[0].date() == date(2026, 1, 5)  # a real date cell
-    assert first[8] == "Cutting 1.5"
+    assert first[1:5] == ["Ramesh", "Operator", "Cutting machine", "2 × 3 ft"]
+    assert first[10] == "Cutting 1.5/sq ft"
+    assert loader[1:3] == ["Suresh", "Loader"]
+    assert Decimal(str(loader[11])) == Decimal("37.5")
 
 
 def test_wages_excel_in_hindi(api):
@@ -66,7 +71,8 @@ def test_wages_excel_in_hindi(api):
     assert rows[2][0] == "मज़दूर"
     assert rows[3][:2] == ["रमेश", "मशीन ऑपरेटर"]
     loader_entry = [r for r in _rows(wb["एंट्रियाँ"]) if r[1] == "सुरेश"][0]
-    assert loader_entry[8] == "लोडिंग 0.5; अनलोडिंग 0.25"
+    assert loader_entry[2] == "लोडर"
+    assert loader_entry[10] == "लोडिंग 0.5/वर्ग फुट; अनलोडिंग 0.25/वर्ग फुट"
 
 
 def test_production_excel_by_month(api):
@@ -81,7 +87,7 @@ def test_production_excel_by_month(api):
     )
     rows = _rows(wb.active)
     assert [r[0] for r in rows[4:]] == ["जनवरी 2026", "फ़रवरी 2026", "कुल"]
-    assert Decimal(str(rows[-1][5])) == Decimal("397.5")
+    assert Decimal(str(rows[-1][6])) == Decimal("435")  # operator + loader pay
 
 
 def test_export_rejects_bad_period(api):
@@ -111,9 +117,9 @@ def test_errors_carry_reason_codes(api):
     wrong = api.c.post(
         "/api/rates",
         json={
-            "worker_type_id": api.type_id["machine_operator"],
+            "machine_id": DOUBLE_EDGE_ID,
             "component": "loading",
-            "rate_per_sqft": "1",
+            "rate": "1",
             "effective_from": "2026-01-01",
         },
     )

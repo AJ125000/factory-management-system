@@ -5,10 +5,13 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
+  Chip,
   Group,
   Modal,
   NumberInput,
   Pagination,
+  SegmentedControl,
   Select,
   SimpleGrid,
   Stack,
@@ -28,13 +31,19 @@ import { Link } from 'react-router';
 import {
   previewWage,
   useDeleteEntry,
+  useLoaderAssignments,
+  useMachines,
   useProduction,
-  useSaveEntry,
   useRates,
+  useSaveEntry,
   useSettings,
+  useSizes,
 } from '../api/hooks';
 import { useWorkersWithPending } from '../api/pending';
 import type {
+  LoaderAssignment,
+  Machine,
+  MachineSize,
   ProductionEntry,
   ProductionInput,
   Rate,
@@ -52,28 +61,77 @@ import {
   workerOptions,
   type PeriodValue,
 } from '../components/common';
-import { formatDate, formatFeet, formatMoney, formatNumber, todayISO } from '../lib/format';
+import { localName } from '../i18n';
+import { formatDate, formatMoney, formatNumber, todayISO } from '../lib/format';
 import { useHubState } from '../lib/hub';
 import { defaultPreset } from '../lib/periods';
-import { calculateWage, ratesFor, totalArea } from '../lib/wages';
+import {
+  battiOf,
+  calculateWage,
+  loaderOn,
+  ratesFor,
+  resolvePiece,
+  sizeLabel,
+  totalOf,
+} from '../lib/wages';
+import { useComponentLabel } from './RatesPage';
+import { entryDetails, entrySize } from '../lib/entryText';
+
+const LAST_MACHINE = 'fms.lastMachine';
+
+function rememberedMachine(): string | null {
+  try {
+    return localStorage.getItem(LAST_MACHINE);
+  } catch {
+    return null;
+  }
+}
+
+function rememberMachine(id: string) {
+  try {
+    localStorage.setItem(LAST_MACHINE, id);
+  } catch {
+    /* storage unavailable */
+  }
+}
 
 /** How a change is described in the "waiting to sync" list. */
 function entryLabel(
-  e: Pick<ProductionEntry, 'entry_date' | 'length_ft' | 'width_ft' | 'quantity'>,
+  e: Pick<ProductionInput, 'entry_date' | 'quantity'> & { size: string },
   w: Worker | undefined,
+  m: Machine | undefined,
 ): string {
-  return `${w?.name_en ?? '?'} · ${formatDate(e.entry_date, 'short')} · ${formatFeet(e.length_ft)} × ${formatFeet(e.width_ft)} ft × ${e.quantity}`;
+  return `${w?.name_en ?? '?'} · ${formatDate(e.entry_date, 'short')} · ${m?.name_en ?? ''} · ${e.size} × ${e.quantity}`;
 }
 
 /** The wage preview worked out on this device (same formulas as the hub, tested to match). */
-function localPreview(input: ProductionInput, worker: Worker, rates: Rate[]): WagePreview {
-  const scheme = worker.worker_type.pay_scheme;
-  const result = calculateWage(scheme, input, ratesFor(rates, worker.worker_type_id, scheme, input.entry_date));
+function localPreview(
+  input: ProductionInput,
+  machine: Machine,
+  sizes: MachineSize[],
+  rates: Rate[],
+  assignments: LoaderAssignment[],
+): WagePreview | null {
+  const piece = resolvePiece(machine.kind, machine.id, sizes, input);
+  if (!piece) return null;
+  const p = { ...piece, cuts: input.cuts, quantity: input.quantity, batti: input.batti };
+  const date = input.entry_date;
+  const op = calculateWage(machine.kind, 'operator', p, ratesFor(rates, machine.id, machine.kind, 'operator', date));
+  const ld = calculateWage(machine.kind, 'loader', p, ratesFor(rates, machine.id, machine.kind, 'loader', date));
+  const loader = input.loader_id ?? loaderOn(assignments, machine.id, date);
   return {
-    area_sqft: totalArea(input),
-    wage: result.total,
+    area_sqft: totalOf(piece.piece_sqft, input.quantity),
+    rft_total: piece.piece_rft === null ? null : totalOf(piece.piece_rft, input.quantity),
+    piece_sqft: piece.piece_sqft,
+    piece_rft: piece.piece_rft,
+    wage: op.total,
     wage_lines: [],
-    missing_rates: result.missing,
+    missing_rates: op.missing,
+    loader_worker_id: loader,
+    loader_wage: ld.total,
+    loader_wage_lines: [],
+    loader_missing_rates: ld.missing,
+    no_loader: loader === null,
   };
 }
 
@@ -83,14 +141,17 @@ export default function ProductionPage() {
   const { t, i18n } = useTranslation();
   const settings = useSettings().data;
   const allWorkers = useWorkersWithPending(true);
+  const machines = useMachines(true).data ?? [];
   const byId = useMemo(
     () => new Map((allWorkers.data ?? []).map((w) => [w.id, w])),
     [allWorkers.data],
   );
+  const machineById = useMemo(() => new Map(machines.map((m) => [m.id, m])), [machines]);
 
   const [period, setPeriod] = useState<PeriodValue | null>(null);
   const activePeriod = period ?? periodFromPreset(defaultPreset(settings?.pay_period ?? 'half_month'));
   const [workerFilter, setWorkerFilter] = useState<string | null>(null);
+  const [machineFilter, setMachineFilter] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<ProductionEntry | null>(null);
 
@@ -98,11 +159,13 @@ export default function ProductionPage() {
     start: activePeriod.start,
     end: activePeriod.end,
     worker_id: workerFilter ?? undefined,
+    machine_id: machineFilter ?? undefined,
     limit: PAGE_SIZE,
     offset: (page - 1) * PAGE_SIZE,
   });
   const remove = useDeleteEntry();
   const { reachable } = useHubState();
+  const name = (w: Worker | undefined) => (w ? localName(w.name_en, w.name_hi, i18n.language) : '');
 
   const confirmDelete = (e: ProductionEntry) => {
     const w = byId.get(e.worker_id);
@@ -121,23 +184,30 @@ export default function ProductionPage() {
       confirmProps: { color: 'red' },
       onConfirm: () =>
         remove.mutate(
-          { id: e.id, label: entryLabel(e, w) },
+          {
+            id: e.id,
+            label: entryLabel({ ...e, size: entrySize(e, t) }, w, machineById.get(e.machine_id)),
+          },
           { onSuccess: (r) => notifyResult(r, t('common.deleted')) },
         ),
     });
   };
 
   const total = entries.data?.total ?? 0;
+  const operators = (allWorkers.data ?? []).filter((w) => !w.is_archived && w.worker_type.role === 'operator');
 
   return (
     <>
       <PageHeader title={t('production.title')} />
 
       <Card withBorder mb="lg">
-        <Title order={4} mb="sm">
+        <Title order={4} mb={2}>
           {t('production.newEntry')}
         </Title>
-        <EntryForm workers={(allWorkers.data ?? []).filter((w) => !w.is_archived)} />
+        <Text size="sm" c="dimmed" mb="sm">
+          {t('production.onlyOperators')}
+        </Text>
+        <EntryForm workers={operators} />
       </Card>
 
       <PendingForEntity entity="production" />
@@ -157,11 +227,23 @@ export default function ProductionPage() {
               placeholder={t('production.filterWorker')}
               clearable
               searchable
-              w={240}
+              w={220}
               data={workerOptions(allWorkers.data ?? [], i18n.language)}
               value={workerFilter}
               onChange={(v) => {
                 setWorkerFilter(v);
+                setPage(1);
+              }}
+            />
+            <Select
+              label={t('production.machine')}
+              placeholder={t('production.filterMachine')}
+              clearable
+              w={220}
+              data={machines.map((m) => ({ value: m.id, label: localName(m.name_en, m.name_hi, i18n.language) }))}
+              value={machineFilter}
+              onChange={(v) => {
+                setMachineFilter(v);
                 setPage(1);
               }}
             />
@@ -183,33 +265,46 @@ export default function ProductionPage() {
             {t('production.noEntries')}
           </Text>
         ) : (
-          <Table.ScrollContainer minWidth={760}>
+          <Table.ScrollContainer minWidth={900}>
             <Table highlightOnHover striped>
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>{t('common.date')}</Table.Th>
                   <Table.Th>{t('production.worker')}</Table.Th>
-                  <Table.Th className="num">{t('production.size')}</Table.Th>
-                  <Table.Th className="num">{t('production.cuts')}</Table.Th>
+                  <Table.Th>{t('production.machine')}</Table.Th>
+                  <Table.Th>{t('production.size')}</Table.Th>
                   <Table.Th className="num">{t('production.quantity')}</Table.Th>
                   <Table.Th className="num">
                     {t('production.area')} ({t('units.sqft')})
                   </Table.Th>
                   <Table.Th className="num">{t('production.wage')}</Table.Th>
+                  <Table.Th>{t('production.loader')}</Table.Th>
                   <Table.Th w={80} />
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
                 {(entries.data?.items ?? []).map((e) => {
                   const w = byId.get(e.worker_id);
+                  const m = machineById.get(e.machine_id);
+                  const loader = e.loader_worker_id ? byId.get(e.loader_worker_id) : undefined;
+                  const details = entryDetails(e, t);
                   return (
                     <Table.Tr key={e.id}>
                       <Table.Td style={{ whiteSpace: 'nowrap' }}>{formatDate(e.entry_date)}</Table.Td>
                       <Table.Td>{w && <WorkerName nameEn={w.name_en} nameHi={w.name_hi} />}</Table.Td>
-                      <Table.Td className="num">
-                        {formatFeet(e.length_ft)} × {formatFeet(e.width_ft)}
+                      <Table.Td>
+                        <Text size="sm">{m ? localName(m.name_en, m.name_hi, i18n.language) : ''}</Text>
                       </Table.Td>
-                      <Table.Td className="num">{e.cuts}</Table.Td>
+                      <Table.Td>
+                        <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
+                          {entrySize(e, t)}
+                        </Text>
+                        {details && (
+                          <Text size="xs" c="dimmed">
+                            {details}
+                          </Text>
+                        )}
+                      </Table.Td>
                       <Table.Td className="num">{e.quantity}</Table.Td>
                       <Table.Td className="num">{formatNumber(e.area_sqft)}</Table.Td>
                       <Table.Td className="num">
@@ -221,6 +316,25 @@ export default function ProductionPage() {
                           <Badge color="orange" variant="light">
                             {t('slip.rateMissing')}
                           </Badge>
+                        )}
+                      </Table.Td>
+                      <Table.Td>
+                        {e.paid_as === 'loader' ? null : e.no_loader ? (
+                          <Badge color="orange" variant="light">
+                            {t('machines.noLoader')}
+                          </Badge>
+                        ) : (
+                          <Stack gap={0}>
+                            <Text size="sm">{name(loader)}</Text>
+                            {e.loader_id && (
+                              <Text size="xs" c="orange">
+                                {t('production.loaderAbsent')}
+                              </Text>
+                            )}
+                            <Text size="xs" c="dimmed">
+                              {e.loader_wage !== null ? formatMoney(e.loader_wage) : t('slip.rateMissing')}
+                            </Text>
+                          </Stack>
                         )}
                       </Table.Td>
                       <Table.Td>
@@ -262,7 +376,7 @@ export default function ProductionPage() {
           <EntryForm
             entry={editing}
             workers={(allWorkers.data ?? []).filter(
-              (w) => !w.is_archived || w.id === editing.worker_id,
+              (w) => (!w.is_archived && w.worker_type.role === 'operator') || w.id === editing.worker_id,
             )}
             onDone={() => setEditing(null)}
           />
@@ -274,29 +388,46 @@ export default function ProductionPage() {
 
 interface FormState {
   worker_id: string | null;
+  machine_id: string | null;
   entry_date: string | null;
   length: number | string;
   width: number | string;
+  size_id: string | null;
   cuts: number | string;
+  batti: number | null;
   quantity: number | string;
+  fill_in: boolean;
+  loader_id: string | null;
   notes: string;
 }
 
-function toInput(v: FormState): ProductionInput | null {
+function toInput(v: FormState, machine: Machine | undefined): ProductionInput | null {
   const n = (x: number | string) => (x === '' ? NaN : Number(x));
-  if (!v.worker_id || !v.entry_date) return null;
-  if (!(n(v.length) > 0) || !(n(v.width) > 0) || !(n(v.cuts) >= 0) || !(n(v.quantity) >= 1)) {
-    return null;
-  }
-  return {
+  if (!v.worker_id || !v.entry_date || !machine || !(n(v.quantity) >= 1)) return null;
+  if (v.fill_in && !v.loader_id) return null;
+  const base = {
     worker_id: v.worker_id,
+    machine_id: machine.id,
     entry_date: v.entry_date,
-    length_ft: String(v.length),
-    width_ft: String(v.width),
-    cuts: Math.trunc(n(v.cuts)),
+    length_ft: null as string | null,
+    width_ft: null as string | null,
+    size_id: null as string | null,
+    cuts: 0,
+    batti: null as number | null,
     quantity: Math.trunc(n(v.quantity)),
+    loader_id: v.fill_in ? v.loader_id : null,
     notes: v.notes.trim() || null,
   };
+  if (machine.kind === 'single_cutting') {
+    return v.size_id ? { ...base, size_id: v.size_id } : null;
+  }
+  if (!(n(v.length) > 0) || !(n(v.width) > 0)) return null;
+  const sized = { ...base, length_ft: String(v.length), width_ft: String(v.width) };
+  if (machine.kind === 'block_cutting') {
+    return n(v.cuts) >= 0 ? { ...sized, cuts: Math.trunc(n(v.cuts)) } : null;
+  }
+  if (machine.kind === 'table_polish') return v.batti ? { ...sized, batti: v.batti } : null;
+  return sized;
 }
 
 function EntryForm({
@@ -309,23 +440,43 @@ function EntryForm({
   onDone?: () => void;
 }) {
   const { t, i18n } = useTranslation();
+  const label = useComponentLabel();
   const save = useSaveEntry();
   const quantityRef = useRef<HTMLInputElement>(null);
+  const machines = useMachines(true).data ?? [];
+  const usable = machines.filter((m) => m.is_active || m.id === entry?.machine_id);
+  const sizes = useSizes().data ?? [];
+  const rates = useRates().data;
+  const assignments = useLoaderAssignments().data ?? [];
+  const allWorkers = useWorkersWithPending(true).data ?? [];
+  const remembered = rememberedMachine();
   const [values, setValues] = useState<FormState>({
     worker_id: entry?.worker_id ?? null,
+    machine_id:
+      entry?.machine_id ?? (usable.some((m) => m.id === remembered) ? remembered : null),
     entry_date: entry?.entry_date ?? todayISO(),
-    length: entry ? Number(entry.length_ft) : '',
-    width: entry ? Number(entry.width_ft) : '',
-    cuts: entry?.cuts ?? '',
+    length: entry?.length_ft ? Number(entry.length_ft) : '',
+    width: entry?.width_ft ? Number(entry.width_ft) : '',
+    size_id: entry?.size_id ?? null,
+    cuts: entry ? entry.cuts : '',
+    batti: entry?.batti ?? null,
     quantity: entry?.quantity ?? '',
+    fill_in: Boolean(entry?.loader_id),
+    loader_id: entry?.loader_id ?? null,
     notes: entry?.notes ?? '',
   });
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setValues((v) => ({ ...v, [key]: value }));
 
+  const machine = machines.find((m) => m.id === values.machine_id);
+  const machineSizes = sizes.filter((s) => s.machine_id === machine?.id);
+  const name = (id: string | null) => {
+    const w = allWorkers.find((x) => x.id === id);
+    return w ? localName(w.name_en, w.name_hi, i18n.language) : '';
+  };
+
   const { reachable } = useHubState();
-  const rates = useRates().data;
-  const input = toInput(values);
+  const input = toInput(values, machine);
   const [debounced] = useDebouncedValue(input, 250);
   const preview = useQuery({
     queryKey: ['preview', debounced],
@@ -337,22 +488,36 @@ function EntryForm({
     meta: { silent: true },
     staleTime: 0,
   });
-  const worker = workers.find((w) => w.id === input?.worker_id);
   const devicePreview = useMemo(
-    () => (!reachable && input && worker && rates ? localPreview(input, worker, rates) : null),
-    [reachable, input, worker, rates],
+    () => (!reachable && input && machine && rates ? localPreview(input, machine, sizes, rates, assignments) : null),
+    [reachable, input, machine, sizes, rates, assignments],
   );
-  const shownPreview = reachable
-    ? input && debounced && preview.data
-      ? preview.data
-      : null
-    : devicePreview;
+  const shown = reachable ? (input && debounced && preview.data ? preview.data : null) : devicePreview;
+
+  // The size as the owner typed it maps to a standard size (double edge) or not.
+  const piece =
+    machine && input ? resolvePiece(machine.kind, machine.id, sizes, input) : null;
+  const usualLoader =
+    machine && values.entry_date ? loaderOn(assignments, machine.id, values.entry_date) : null;
+  const loaders = allWorkers.filter((w) => w.worker_type.role === 'loader' && !w.is_archived);
+  const battiChoices = (() => {
+    const withRates = new Set(
+      (rates ?? [])
+        .filter((r) => r.machine_id === machine?.id)
+        .map((r) => battiOf(r.component))
+        .filter((b): b is number => b !== null),
+    );
+    if (values.batti) withRates.add(values.batti);
+    return [...(withRates.size ? withRates : new Set([1, 2, 4, 5]))].sort((a, b) => a - b);
+  })();
 
   const submit = () => {
     if (!input) return;
     const w = workers.find((x) => x.id === input.worker_id);
+    const size = machine ? entrySize({ ...input, size_label: piece?.size ? sizeLabel(piece.size.length, piece.size.width) : null }, t) : '';
+    rememberMachine(input.machine_id);
     save.mutate(
-      { id: entry?.id, body: input, label: entryLabel({ ...input, quantity: input.quantity }, w) },
+      { id: entry?.id, body: input, label: entryLabel({ ...input, size }, w, machine) },
       {
         onSuccess: (result) => {
           notifyResult(
@@ -364,14 +529,47 @@ function EntryForm({
           );
           if (onDone) onDone();
           else {
-            // Keep worker, date and size for fast repeat entries; clear what changes most.
-            setValues((v) => ({ ...v, quantity: '', notes: '' }));
+            // Keep worker, machine, date and size for fast repeat entries.
+            setValues((v) => ({ ...v, quantity: '', notes: '', fill_in: false, loader_id: null }));
             quantityRef.current?.focus();
           }
         },
       },
     );
   };
+
+  const quantityField = (
+    <NumberInput
+      label={t('production.quantity')}
+      required
+      min={1}
+      allowDecimal={false}
+      ref={quantityRef}
+      value={values.quantity}
+      onChange={(v) => set('quantity', v)}
+    />
+  );
+  const sizeFields = (
+    <>
+      <NumberInput
+        label={t('production.length')}
+        required
+        min={0}
+        decimalScale={3}
+        value={values.length}
+        onChange={(v) => set('length', v)}
+      />
+      <NumberInput
+        label={t('production.width')}
+        required
+        min={0}
+        decimalScale={3}
+        value={values.width}
+        onChange={(v) => set('width', v)}
+      />
+    </>
+  );
+  const missing = [...(shown?.missing_rates ?? []), ...(shown?.loader_missing_rates ?? [])];
 
   return (
     <form
@@ -381,7 +579,7 @@ function EntryForm({
       }}
     >
       <Stack gap="sm">
-        <SimpleGrid cols={{ base: 1, sm: 2 }}>
+        <SimpleGrid cols={{ base: 1, sm: 3 }}>
           <Select
             label={t('production.worker')}
             placeholder={workers.length ? t('production.selectWorker') : t('production.noWorkersYet')}
@@ -392,6 +590,15 @@ function EntryForm({
             onChange={(v) => set('worker_id', v)}
             nothingFoundMessage={t('workers.noMatch')}
           />
+          <Select
+            label={t('production.machine')}
+            placeholder={t('production.selectMachine')}
+            required
+            allowDeselect={false}
+            data={usable.map((m) => ({ value: m.id, label: localName(m.name_en, m.name_hi, i18n.language) }))}
+            value={values.machine_id}
+            onChange={(v) => setValues((s) => ({ ...s, machine_id: v, size_id: null }))}
+          />
           <DateField
             label={t('production.entryDate')}
             required
@@ -400,67 +607,139 @@ function EntryForm({
             onChange={(v) => set('entry_date', v)}
           />
         </SimpleGrid>
-        <SimpleGrid cols={{ base: 2, sm: 4 }}>
-          <NumberInput
-            label={t('production.length')}
-            required
-            min={0}
-            decimalScale={3}
-            value={values.length}
-            onChange={(v) => set('length', v)}
-          />
-          <NumberInput
-            label={t('production.width')}
-            required
-            min={0}
-            decimalScale={3}
-            value={values.width}
-            onChange={(v) => set('width', v)}
-          />
-          <NumberInput
-            label={t('production.cuts')}
-            required
-            min={0}
-            allowDecimal={false}
-            value={values.cuts}
-            onChange={(v) => set('cuts', v)}
-          />
-          <NumberInput
-            label={t('production.quantity')}
-            required
-            min={1}
-            allowDecimal={false}
-            ref={quantityRef}
-            value={values.quantity}
-            onChange={(v) => set('quantity', v)}
-          />
-        </SimpleGrid>
+
+        {machine?.kind === 'double_edge' && machineSizes.length > 0 && (
+          <Chip.Group
+            value={piece?.size ? piece.size.id : ''}
+            onChange={(id) => {
+              const s = machineSizes.find((x) => x.id === id);
+              if (s) setValues((v) => ({ ...v, length: Number(s.length), width: Number(s.width) }));
+            }}
+          >
+            <Group gap="xs">
+              {machineSizes.map((s) => (
+                <Chip key={s.id} value={s.id}>
+                  {sizeLabel(s.length, s.width)} {t('units.ft')}
+                </Chip>
+              ))}
+            </Group>
+          </Chip.Group>
+        )}
+
+        {machine?.kind === 'table_polish' && (
+          <Stack gap={4}>
+            <Text size="sm" fw={500}>
+              {t('production.batti')} <Text span c="red">*</Text>
+            </Text>
+            <SegmentedControl
+              value={values.batti ? String(values.batti) : ''}
+              onChange={(v) => set('batti', Number(v))}
+              data={battiChoices.map((b) => ({ value: String(b), label: label(`polish_${b}`) }))}
+              style={{ alignSelf: 'flex-start' }}
+            />
+          </Stack>
+        )}
+
+        {machine && (
+          <SimpleGrid cols={{ base: 2, sm: 4 }}>
+            {machine.kind === 'single_cutting' ? (
+              <Select
+                label={t('production.sizeIn')}
+                placeholder={t('production.pickSize')}
+                required
+                searchable
+                description={t('production.addSizeHint')}
+                data={machineSizes.map((s) => ({ value: s.id, label: sizeLabel(s.length, s.width) }))}
+                value={values.size_id}
+                onChange={(v) => set('size_id', v)}
+                style={{ gridColumn: 'span 2' }}
+              />
+            ) : (
+              sizeFields
+            )}
+            {machine.kind === 'block_cutting' && (
+              <NumberInput
+                label={t('production.cuts')}
+                required
+                min={0}
+                allowDecimal={false}
+                value={values.cuts}
+                onChange={(v) => set('cuts', v)}
+              />
+            )}
+            {quantityField}
+          </SimpleGrid>
+        )}
+
+        {piece && machine?.kind === 'double_edge' && piece.piece_rft && (
+          <Text size="xs" c="dimmed">
+            {t(piece.size ? 'production.tableSize' : 'production.trueSize', {
+              rft: formatNumber(piece.piece_rft),
+              sqft: formatNumber(piece.piece_sqft),
+            })}
+          </Text>
+        )}
+
+        {machine && (
+          <Group gap="md" align="flex-end" wrap="wrap">
+            {values.fill_in ? (
+              <Select
+                label={t('production.whoLoaded')}
+                description={t('production.fillInHelp')}
+                required
+                searchable
+                w={260}
+                data={loaders.map((w) => ({ value: w.id, label: localName(w.name_en, w.name_hi, i18n.language) }))}
+                value={values.loader_id}
+                onChange={(v) => set('loader_id', v)}
+              />
+            ) : usualLoader ? (
+              <Text size="sm">{t('production.usualLoader', { name: name(usualLoader) })}</Text>
+            ) : (
+              <Alert color="orange" variant="light" p="xs" icon={<IconAlertTriangle size={16} />}>
+                <Text size="sm">{t('production.noLoader')}</Text>
+              </Alert>
+            )}
+            <Checkbox
+              label={t('production.fillIn')}
+              checked={values.fill_in}
+              onChange={(e) => {
+                const checked = e.currentTarget.checked;
+                setValues((v) => ({ ...v, fill_in: checked, loader_id: checked ? v.loader_id : null }));
+              }}
+            />
+          </Group>
+        )}
+
         <TextInput
           label={`${t('common.notes')} (${t('common.optional')})`}
           value={values.notes}
           onChange={(e) => set('notes', e.currentTarget.value)}
         />
 
-        {shownPreview && shownPreview.missing_rates.length > 0 && (
-          <MissingRateAlert components={shownPreview.missing_rates} />
-        )}
+        {missing.length > 0 && <MissingRateAlert components={missing} />}
 
         <Group justify="space-between" align="center" wrap="wrap">
           <div>
-            {shownPreview && (
-              <Group gap="lg">
+            {shown && (
+              <Group gap="lg" align="baseline" wrap="wrap">
                 <Text size="sm" c="dimmed">
-                  {t('production.previewArea', { area: formatNumber(shownPreview.area_sqft) })}
+                  {t('production.previewArea', { area: formatNumber(shown.area_sqft) })}
+                  {shown.rft_total && ` · ${t('production.previewRft', { rft: formatNumber(shown.rft_total) })}`}
                 </Text>
-                {shownPreview.wage !== null && (
+                {shown.wage !== null && (
                   <Text size="lg" fw={700}>
-                    {t('production.wage')}: {formatMoney(shownPreview.wage)}
-                    {!reachable && (
-                      <Text span size="xs" c="dimmed" fw={400}>
-                        {' '}
-                        ({t('sync.deviceCalc')})
-                      </Text>
-                    )}
+                    {t('production.operatorWage')}: {formatMoney(shown.wage)}
+                  </Text>
+                )}
+                {shown.loader_wage !== null && !shown.no_loader && (
+                  <Text size="md" fw={600}>
+                    {t('production.loaderWage')}: {formatMoney(shown.loader_wage)}
+                  </Text>
+                )}
+                {!reachable && (
+                  <Text span size="xs" c="dimmed">
+                    ({t('sync.deviceCalc')})
                   </Text>
                 )}
               </Group>
@@ -484,11 +763,10 @@ function EntryForm({
 
 function MissingRateAlert({ components }: { components: RateComponent[] }) {
   const { t } = useTranslation();
+  const label = useComponentLabel();
   return (
     <Alert color="orange" variant="light" icon={<IconAlertTriangle />}>
-      {t('production.missingRate', {
-        components: components.map((c) => t(`components.${c}`)).join(', '),
-      })}{' '}
+      {t('production.missingRate', { components: [...new Set(components)].map(label).join(', ') })}{' '}
       <Anchor component={Link} to="/rates" size="sm">
         {t('production.setRates')}
       </Anchor>

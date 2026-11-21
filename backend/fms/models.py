@@ -6,6 +6,10 @@ Design notes:
 * Measurements and rates are stored as exact decimal text, never floats.
 * Each production entry records the worker type it was paid under, so changing a
   worker's type later never changes their past wages.
+* Each production entry also keeps the sq ft / running ft of one piece as worked out
+  when it was saved, so editing a machine's size table never changes past wages.
+* The loader paid for an entry is the one assigned to its machine on the entry's
+  date (or the one chosen on the entry when the usual loader was absent).
 """
 
 from __future__ import annotations
@@ -29,6 +33,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator
 
 from .util import new_id, utcnow
+from .wages import component_unit
 
 NAMING_CONVENTION = {
     "ix": "ix_%(column_0_label)s",
@@ -69,14 +74,68 @@ class TimestampMixin:
 
 class WorkerType(TimestampMixin, Base):
     __tablename__ = "worker_types"
-    __table_args__ = (CheckConstraint("pay_scheme IN ('cutting', 'loading')", name="pay_scheme"),)
+    __table_args__ = (CheckConstraint("role IN ('operator', 'loader')", name="role"),)
 
     id: Mapped[str] = _id_column()
     code: Mapped[str] = mapped_column(String(40), unique=True)
     name_en: Mapped[str] = mapped_column(String(80))
     name_hi: Mapped[str | None] = mapped_column(String(80))
-    pay_scheme: Mapped[str] = mapped_column(String(20))
+    role: Mapped[str] = mapped_column(String(20))
     is_active: Mapped[bool] = mapped_column(default=True)
+
+
+class Machine(TimestampMixin, Base):
+    """A machine on the factory floor. Its kind decides how its workers are paid."""
+
+    __tablename__ = "machines"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('block_cutting', 'double_edge', 'table_polish', 'single_cutting')",
+            name="kind",
+        ),
+    )
+
+    id: Mapped[str] = _id_column()
+    code: Mapped[str] = mapped_column(String(40), unique=True)
+    kind: Mapped[str] = mapped_column(String(20))
+    name_en: Mapped[str] = mapped_column(String(80))
+    name_hi: Mapped[str | None] = mapped_column(String(80))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(default=True)
+
+
+class MachineSize(TimestampMixin, Base):
+    """A standard size and the running ft / sq ft paid per piece ("market standard").
+
+    Lengths are in feet for double edge cutting and in inches for single cutting.
+    """
+
+    __tablename__ = "machine_sizes"
+    __table_args__ = (UniqueConstraint("machine_id", "length", "width"),)
+
+    id: Mapped[str] = _id_column()
+    machine_id: Mapped[str] = mapped_column(ForeignKey("machines.id", ondelete="CASCADE"))
+    length: Mapped[Decimal] = mapped_column(DecimalText())
+    width: Mapped[Decimal] = mapped_column(DecimalText())
+    rft: Mapped[Decimal] = mapped_column(DecimalText())
+    sqft: Mapped[Decimal] = mapped_column(DecimalText())
+
+    machine: Mapped[Machine] = relationship(lazy="joined")
+
+
+class LoaderAssignment(TimestampMixin, Base):
+    """Who loads at a machine from `effective_from` onwards (no worker = no loader)."""
+
+    __tablename__ = "loader_assignments"
+    __table_args__ = (UniqueConstraint("machine_id", "effective_from"),)
+
+    id: Mapped[str] = _id_column()
+    machine_id: Mapped[str] = mapped_column(ForeignKey("machines.id", ondelete="CASCADE"))
+    worker_id: Mapped[str | None] = mapped_column(
+        ForeignKey("workers.id", ondelete="SET NULL"), nullable=True
+    )
+    effective_from: Mapped[date] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(Text)
 
 
 class Worker(TimestampMixin, Base):
@@ -99,22 +158,26 @@ class Worker(TimestampMixin, Base):
 
 
 class Rate(TimestampMixin, Base):
-    """A wage rate for one worker type and component, valid from `effective_from` onwards."""
+    """A wage rate for one machine and component, valid from `effective_from` onwards.
+
+    Per sq ft, except cutting on double edge / single cutting: per running foot.
+    """
 
     __tablename__ = "rates"
-    __table_args__ = (
-        UniqueConstraint("worker_type_id", "component", "effective_from"),
-        CheckConstraint("component IN ('cutting', 'loading', 'unloading')", name="component"),
-    )
+    __table_args__ = (UniqueConstraint("machine_id", "component", "effective_from"),)
 
     id: Mapped[str] = _id_column()
-    worker_type_id: Mapped[str] = mapped_column(ForeignKey("worker_types.id", ondelete="RESTRICT"))
+    machine_id: Mapped[str] = mapped_column(ForeignKey("machines.id", ondelete="RESTRICT"))
     component: Mapped[str] = mapped_column(String(20))
-    rate_per_sqft: Mapped[Decimal] = mapped_column(DecimalText())
+    rate: Mapped[Decimal] = mapped_column(DecimalText())
     effective_from: Mapped[date] = mapped_column(Date)
     note: Mapped[str | None] = mapped_column(Text)
 
-    worker_type: Mapped[WorkerType] = relationship(lazy="joined")
+    machine: Mapped[Machine] = relationship(lazy="joined")
+
+    @property
+    def unit(self) -> str:
+        return component_unit(self.machine.kind, self.component)
 
 
 class ProductionEntry(TimestampMixin, Base):
@@ -129,19 +192,40 @@ class ProductionEntry(TimestampMixin, Base):
     worker_id: Mapped[str] = mapped_column(ForeignKey("workers.id", ondelete="CASCADE"))
     # Snapshot of the worker's type when the entry was made (see module docstring).
     worker_type_id: Mapped[str] = mapped_column(ForeignKey("worker_types.id", ondelete="RESTRICT"))
+    machine_id: Mapped[str] = mapped_column(
+        ForeignKey("machines.id", ondelete="RESTRICT"), index=True
+    )
     entry_date: Mapped[date] = mapped_column(Date, index=True)
-    length_ft: Mapped[Decimal] = mapped_column(DecimalText())
-    width_ft: Mapped[Decimal] = mapped_column(DecimalText())
-    cuts: Mapped[int] = mapped_column(Integer)
+    # Size in feet (not used by single cutting, which picks a size from its table).
+    length_ft: Mapped[Decimal | None] = mapped_column(DecimalText(), nullable=True)
+    width_ft: Mapped[Decimal | None] = mapped_column(DecimalText(), nullable=True)
+    size_id: Mapped[str | None] = mapped_column(
+        ForeignKey("machine_sizes.id", ondelete="SET NULL"), nullable=True
+    )
+    # What one piece counted for when saved (see module docstring).
+    size_label: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    piece_sqft: Mapped[Decimal] = mapped_column(DecimalText())
+    piece_rft: Mapped[Decimal | None] = mapped_column(DecimalText(), nullable=True)
+    cuts: Mapped[int] = mapped_column(Integer, default=0)
+    batti: Mapped[int | None] = mapped_column(Integer, nullable=True)
     quantity: Mapped[int] = mapped_column(Integer)
+    # Someone filling in for the machine's usual loader on this entry only.
+    loader_id: Mapped[str | None] = mapped_column(
+        ForeignKey("workers.id", ondelete="SET NULL"), nullable=True
+    )
     notes: Mapped[str | None] = mapped_column(Text)
 
-    worker: Mapped[Worker] = relationship(lazy="joined")
+    worker: Mapped[Worker] = relationship(lazy="joined", foreign_keys=[worker_id])
     worker_type: Mapped[WorkerType] = relationship(lazy="joined")
+    machine: Mapped[Machine] = relationship(lazy="joined")
 
     @property
     def area_sqft(self) -> Decimal:
-        return self.length_ft * self.width_ft * self.quantity
+        return self.piece_sqft * self.quantity
+
+    @property
+    def rft_total(self) -> Decimal | None:
+        return None if self.piece_rft is None else self.piece_rft * self.quantity
 
 
 class Tombstone(Base):

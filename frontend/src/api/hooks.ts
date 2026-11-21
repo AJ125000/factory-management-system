@@ -20,13 +20,16 @@ import type {
   ConnectInfo,
   CurrentRate,
   ISODate,
-  PayScheme,
+  LoaderAssignment,
+  Machine,
+  MachineSize,
   ProductionEntry,
   ProductionInput,
   ProductionSummary,
   GroupBy,
   Rate,
   RateComponent,
+  Role,
   WagePreview,
   WagesReport,
   Worker,
@@ -38,6 +41,9 @@ export const keys = {
   settings: ['settings'] as const,
   workerTypes: ['worker-types'] as const,
   workers: ['workers'] as const,
+  machines: ['machines'] as const,
+  sizes: ['machine-sizes'] as const,
+  loaders: ['loader-assignments'] as const,
   rates: ['rates'] as const,
   production: ['production'] as const,
   reports: ['reports'] as const,
@@ -76,12 +82,34 @@ export const ratesQuery = queryOptions({
   queryFn: () => api<Rate[]>('GET', '/rates'),
 });
 
+export const machinesQuery = queryOptions({
+  queryKey: keys.machines,
+  queryFn: () => api<Machine[]>('GET', '/machines'),
+});
+
+export const sizesQuery = queryOptions({
+  queryKey: keys.sizes,
+  queryFn: () => api<MachineSize[]>('GET', '/machine-sizes'),
+});
+
+export const loadersQuery = queryOptions({
+  queryKey: keys.loaders,
+  queryFn: () => api<LoaderAssignment[]>('GET', '/loader-assignments'),
+});
+
 /** Fetched at start-up (and when the laptop is back) so data entry works offline. */
 export function prefetchEssentials(client: QueryClient) {
-  void client.prefetchQuery(settingsQuery);
-  void client.prefetchQuery(workerTypesQuery);
-  void client.prefetchQuery(workersQuery);
-  void client.prefetchQuery(ratesQuery);
+  for (const query of [
+    settingsQuery,
+    workerTypesQuery,
+    workersQuery,
+    machinesQuery,
+    sizesQuery,
+    loadersQuery,
+    ratesQuery,
+  ]) {
+    void client.prefetchQuery(query as typeof settingsQuery);
+  }
 }
 
 const activeTypes = (types: WorkerType[]) => types.filter((t) => t.is_active);
@@ -108,7 +136,7 @@ export function useWorkerTypes(includeInactive = false) {
 export function useSaveWorkerType() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: ({ id, ...body }: { id?: string; name_en?: string; name_hi?: string | null; pay_scheme?: PayScheme; is_active?: boolean }) =>
+    mutationFn: ({ id, ...body }: { id?: string; name_en?: string; name_hi?: string | null; role?: Role; is_active?: boolean }) =>
       id
         ? api<WorkerType>('PATCH', `/worker-types/${id}`, { body })
         : api<WorkerType>('POST', '/worker-types', { body }),
@@ -171,6 +199,107 @@ export function useDeleteWorker() {
   });
 }
 
+// ------------------------------------------------------------------- machines
+const activeMachines = (machines: Machine[]) => machines.filter((m) => m.is_active);
+
+export function useMachines(includeInactive = false) {
+  return useQuery({ ...machinesQuery, select: includeInactive ? undefined : activeMachines });
+}
+
+export function useUpdateMachine() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; name_en?: string; name_hi?: string | null; is_active?: boolean }) =>
+      api<Machine>('PATCH', `/machines/${id}`, { body }),
+    onSuccess: () => invalidate(keys.machines, ...DERIVED),
+  });
+}
+
+export function useSizes() {
+  return useQuery(sizesQuery);
+}
+
+export interface SizeInput {
+  machine_id: string;
+  length: string;
+  width: string;
+  rft: string;
+  sqft: string;
+}
+
+export function useSaveSize() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: async ({ id, body, label }: { id?: string; body: Partial<SizeInput>; label: string }) => {
+      if (id) {
+        return { queued: false as const, data: await api<MachineSize>('PATCH', `/machine-sizes/${id}`, { body }) };
+      }
+      const entityId = newId();
+      return submit<MachineSize>({
+        entity: 'size', action: 'create', entityId, label,
+        method: 'POST', path: '/machine-sizes', body: { ...body, id: entityId },
+      });
+    },
+    onSuccess: () => invalidate(keys.sizes),
+  });
+}
+
+export function useDeleteSize() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (id: string) => api<void>('DELETE', `/machine-sizes/${id}`),
+    onSuccess: () => invalidate(keys.sizes),
+  });
+}
+
+export function useLoaderAssignments() {
+  return useQuery(loadersQuery);
+}
+
+export interface LoaderAssignmentInput {
+  machine_id: string;
+  worker_id: string | null;
+  effective_from: ISODate;
+  note?: string | null;
+}
+
+export function useSaveLoaderAssignment() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      body,
+      label,
+    }: {
+      id?: string;
+      body: Partial<LoaderAssignmentInput>;
+      label: string;
+    }) => {
+      if (id) {
+        // Correcting a past assignment moves loader pay: only with the laptop reachable.
+        return {
+          queued: false as const,
+          data: await api<LoaderAssignment>('PATCH', `/loader-assignments/${id}`, { body }),
+        };
+      }
+      const entityId = newId();
+      return submit<LoaderAssignment>({
+        entity: 'loader_assignment', action: 'create', entityId, label,
+        method: 'POST', path: '/loader-assignments', body: { ...body, id: entityId },
+      });
+    },
+    onSuccess: () => invalidate(keys.loaders, ...DERIVED),
+  });
+}
+
+export function useDeleteLoaderAssignment() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (id: string) => api<void>('DELETE', `/loader-assignments/${id}`),
+    onSuccess: () => invalidate(keys.loaders, ...DERIVED),
+  });
+}
+
 // ---------------------------------------------------------------------- rates
 export function useRates() {
   return useQuery(ratesQuery);
@@ -184,9 +313,9 @@ export function useCurrentRates(on?: ISODate) {
 }
 
 export interface RateInput {
-  worker_type_id: string;
+  machine_id: string;
   component: RateComponent;
-  rate_per_sqft: string;
+  rate: string;
   effective_from: ISODate;
   note?: string | null;
 }
@@ -222,6 +351,7 @@ export interface ProductionFilters {
   start?: ISODate;
   end?: ISODate;
   worker_id?: string;
+  machine_id?: string;
   limit?: number;
   offset?: number;
 }
@@ -277,7 +407,7 @@ export function useDeleteEntry() {
 export function useWagesReport(
   start: ISODate,
   end: ISODate,
-  options: { includeEntries?: boolean; workerIds?: string[] } = {},
+  options: { includeEntries?: boolean; workerIds?: string[]; machineId?: string } = {},
 ) {
   return useQuery({
     queryKey: [...keys.reports, 'wages', start, end, options],
@@ -288,6 +418,7 @@ export function useWagesReport(
           end,
           include_entries: options.includeEntries ?? false,
           worker_id: options.workerIds,
+          machine_id: options.machineId,
         },
       }),
     enabled: Boolean(start && end),
@@ -299,12 +430,13 @@ export function useProductionSummary(
   end: ISODate,
   groupBy: GroupBy,
   workerIds?: string[],
+  machineId?: string,
 ) {
   return useQuery({
-    queryKey: [...keys.reports, 'production', start, end, groupBy, workerIds],
+    queryKey: [...keys.reports, 'production', start, end, groupBy, workerIds, machineId],
     queryFn: () =>
       api<ProductionSummary>('GET', '/reports/production', {
-        params: { start, end, group_by: groupBy, worker_id: workerIds },
+        params: { start, end, group_by: groupBy, worker_id: workerIds, machine_id: machineId },
       }),
     enabled: Boolean(start && end),
   });

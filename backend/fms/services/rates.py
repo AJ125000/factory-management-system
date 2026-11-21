@@ -1,7 +1,7 @@
 """Wage rates with effective dates.
 
 A rate applies from its `effective_from` date until the next rate for the same
-worker type and component. A production entry is always paid at the rate that was
+machine and component. A production entry is always paid at the rate that was
 in effect on its own date, so raising rates never changes wages already earned.
 """
 
@@ -20,10 +20,10 @@ from sqlalchemy.orm import Session
 from ..errors import Conflict, Invalid, NotFound
 from ..models import Rate
 from ..schemas import RateCreate, RateUpdate
-from ..wages import SCHEME_COMPONENTS, PayScheme, RateComponent
+from ..wages import Piece, Role, allowed_components, bases
 from . import audit
 from ._common import apply_changes, existing_replay
-from .worker_types import get_worker_type
+from .machines import known_machine
 
 ENTITY = "rate"
 
@@ -34,7 +34,7 @@ class RateBook:
     def __init__(self, rates: Iterable[Rate]) -> None:
         grouped: dict[tuple[str, str], list[tuple[date, Decimal]]] = defaultdict(list)
         for r in rates:
-            grouped[(r.worker_type_id, r.component)].append((r.effective_from, r.rate_per_sqft))
+            grouped[(r.machine_id, r.component)].append((r.effective_from, r.rate))
         self._dates: dict[tuple[str, str], list[date]] = {}
         self._values: dict[tuple[str, str], list[Decimal]] = {}
         for key, items in grouped.items():
@@ -47,31 +47,34 @@ class RateBook:
         return cls(session.scalars(select(Rate)).unique())
 
     def lookup_with_date(
-        self, worker_type_id: str, component: RateComponent | str, on: date
+        self, machine_id: str, component: str, on: date
     ) -> tuple[Decimal, date] | None:
-        key = (worker_type_id, str(component))
+        key = (machine_id, component)
         dates = self._dates.get(key)
         if not dates:
             return None
         i = bisect_right(dates, on) - 1
         return (self._values[key][i], dates[i]) if i >= 0 else None
 
-    def lookup(
-        self, worker_type_id: str, component: RateComponent | str, on: date
-    ) -> Decimal | None:
-        found = self.lookup_with_date(worker_type_id, component, on)
+    def lookup(self, machine_id: str, component: str, on: date) -> Decimal | None:
+        found = self.lookup_with_date(machine_id, component, on)
         return found[0] if found else None
 
+    def components(self, machine_id: str) -> set[str]:
+        """Every component this machine has ever had a rate for."""
+        return {c for (m, c) in self._dates if m == machine_id}
+
     def rates_for(
-        self, worker_type_id: str, scheme: PayScheme | str, on: date
-    ) -> dict[RateComponent, Decimal | None]:
-        return {c: self.lookup(worker_type_id, c, on) for c in SCHEME_COMPONENTS[PayScheme(scheme)]}
+        self, machine_id: str, kind: str, role: Role, piece: Piece, on: date
+    ) -> dict[str, Decimal | None]:
+        """The rates on a date for everything this entry pays."""
+        return {c: self.lookup(machine_id, c, on) for c in bases(kind, role, piece)}
 
 
-def list_rates(session: Session, worker_type_id: str | None = None) -> list[Rate]:
-    stmt = select(Rate).order_by(Rate.worker_type_id, Rate.component, Rate.effective_from.desc())
-    if worker_type_id:
-        stmt = stmt.where(Rate.worker_type_id == worker_type_id)
+def list_rates(session: Session, machine_id: str | None = None) -> list[Rate]:
+    stmt = select(Rate).order_by(Rate.machine_id, Rate.component, Rate.effective_from.desc())
+    if machine_id:
+        stmt = stmt.where(Rate.machine_id == machine_id)
     return list(session.scalars(stmt).unique())
 
 
@@ -88,8 +91,7 @@ def _flush_unique(session: Session) -> None:
             session.flush()
     except IntegrityError as exc:
         raise Conflict(
-            "A rate for this worker type and component already starts on that date. "
-            "Edit that rate instead.",
+            "A rate for this machine and work already starts on that date. Edit that rate instead.",
             reason="duplicate_effective_date",
         ) from exc
 
@@ -97,24 +99,19 @@ def _flush_unique(session: Session) -> None:
 def create_rate(session: Session, data: RateCreate) -> Rate:
     if replay := existing_replay(session, Rate, data.id, ENTITY):
         return replay
-    try:
-        wt = get_worker_type(session, data.worker_type_id)
-    except NotFound as exc:
-        raise Invalid(
-            "Unknown worker type", reason="unknown_worker_type", worker_type_id=data.worker_type_id
-        ) from exc
-    allowed = SCHEME_COMPONENTS[PayScheme(wt.pay_scheme)]
+    machine = known_machine(session, data.machine_id)
+    allowed = allowed_components(machine.kind)
     if data.component not in allowed:
         raise Invalid(
-            f"{wt.name_en} is paid by {', '.join(allowed)}, not {data.component}",
+            f"{machine.name_en} has no {data.component} rate",
             reason="component_not_allowed",
-            allowed_components=[str(c) for c in allowed],
+            allowed_components=list(allowed),
         )
     rate = Rate(
         **({"id": str(data.id)} if data.id else {}),
-        worker_type_id=wt.id,
-        component=data.component.value,
-        rate_per_sqft=data.rate_per_sqft,
+        machine_id=machine.id,
+        component=data.component,
+        rate=data.rate,
         effective_from=data.effective_from,
         note=data.note or None,
     )
@@ -125,7 +122,7 @@ def create_rate(session: Session, data: RateCreate) -> Rate:
         "create",
         ENTITY,
         rate.id,
-        f"Set {wt.name_en} {rate.component} rate to {rate.rate_per_sqft}/sq ft "
+        f"Set {machine.name_en} {rate.component} rate to {rate.rate} "
         f"from {rate.effective_from.isoformat()}",
         after=audit.snapshot(rate),
     )
@@ -139,7 +136,7 @@ def update_rate(session: Session, rate_id: str, data: RateUpdate) -> Rate:
     apply_changes(
         rate,
         data.model_dump(exclude_unset=True),
-        required=("rate_per_sqft", "effective_from"),
+        required=("rate", "effective_from"),
         blank_to_none=("note",),
     )
     _flush_unique(session)

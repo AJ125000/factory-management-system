@@ -8,8 +8,24 @@ from fastapi.testclient import TestClient
 
 from fms.config import Settings
 from fms.main import create_app
+from fms.services.machines import (
+    BLOCK_CUTTING_ID,
+    DOUBLE_EDGE_ID,
+    SINGLE_CUTTING_ID,
+    TABLE_POLISH_ID,
+)
 
 OWNER_PASSWORD = "owner-pass-123"
+
+# Rates used to belong to worker types, which were the two jobs at the cutting machine.
+MACHINES = {
+    "machine_operator": BLOCK_CUTTING_ID,
+    "loader": BLOCK_CUTTING_ID,
+    "block": BLOCK_CUTTING_ID,
+    "double_edge": DOUBLE_EDGE_ID,
+    "table_polish": TABLE_POLISH_ID,
+    "single_cutting": SINGLE_CUTTING_ID,
+}
 
 
 @pytest.fixture
@@ -47,25 +63,45 @@ class Api:
         body = {"name_en": name, "worker_type_id": self.type_id[type_code], **extra}
         return self.ok(self.c.post("/api/workers", json=body), 201)
 
-    def rate(self, type_code: str, component: str, value: str, effective_from: str) -> dict:
+    def rate(self, machine: str, component: str, value: str, effective_from: str) -> dict:
         body = {
-            "worker_type_id": self.type_id[type_code],
+            "machine_id": MACHINES.get(machine, machine),
             "component": component,
-            "rate_per_sqft": value,
+            "rate": value,
             "effective_from": effective_from,
         }
         return self.ok(self.c.post("/api/rates", json=body), 201)
 
-    def entry(self, worker: dict, entry_date: str, length="2", width="3", cuts=2, quantity=5):
+    def entry(
+        self,
+        worker: dict,
+        entry_date: str,
+        length="2",
+        width="3",
+        cuts=2,
+        quantity=5,
+        machine="block",
+        **extra,
+    ):
         body = {
             "worker_id": worker["id"],
+            "machine_id": MACHINES.get(machine, machine),
             "entry_date": entry_date,
             "length_ft": length,
             "width_ft": width,
             "cuts": cuts,
             "quantity": quantity,
+            **extra,
         }
         return self.ok(self.c.post("/api/production", json=body), 201)
+
+    def assign(self, machine: str, loader: dict | None, effective_from: str) -> dict:
+        body = {
+            "machine_id": MACHINES.get(machine, machine),
+            "worker_id": loader["id"] if loader else None,
+            "effective_from": effective_from,
+        }
+        return self.ok(self.c.post("/api/loader-assignments", json=body), 201)
 
     def wages(self, start: str, end: str, **params) -> dict:
         return self.ok(
