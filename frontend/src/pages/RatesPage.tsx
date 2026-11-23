@@ -1,4 +1,4 @@
-/** Machines & rates: each machine's name, rates, loader and size table. */
+/** Machines & rates: each machine type's rates and size table, and its machines with their loaders. */
 
 import {
   Accordion,
@@ -8,6 +8,7 @@ import {
   Button,
   Card,
   Group,
+  Menu,
   Modal,
   NumberInput,
   Select,
@@ -20,12 +21,22 @@ import {
   Title,
 } from '@mantine/core';
 import { modals } from '@mantine/modals';
-import { IconInfoCircle, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react';
+import {
+  IconDots,
+  IconInfoCircle,
+  IconPencil,
+  IconPlus,
+  IconTrash,
+  IconUserCog,
+} from '@tabler/icons-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
+  fetchMachineDeleteImpact,
+  useCreateMachine,
   useDeleteLoaderAssignment,
+  useDeleteMachine,
   useDeleteRate,
   useDeleteSize,
   useLoaderAssignments,
@@ -41,16 +52,17 @@ import {
 import type {
   LoaderAssignment,
   Machine,
+  MachineKind,
   MachineSize,
   Rate,
   RateComponent,
   Role,
   Worker,
 } from '../api/types';
-import { DateField, PageHeader, notifySaved } from '../components/common';
+import { DateField, PageHeader, notifyError, notifySaved } from '../components/common';
 import { notifyResult } from '../components/Sync';
 import { localName } from '../i18n';
-import { componentLabel } from '../lib/entryText';
+import { MACHINE_KINDS, componentLabel } from '../lib/entryText';
 import { formatDate, formatNumber, formatRate, todayISO } from '../lib/format';
 import { useHubState } from '../lib/hub';
 import {
@@ -69,36 +81,53 @@ export function useComponentLabel() {
   return (component: RateComponent) => componentLabel(t, component);
 }
 
-function currentRate(rates: Rate[], machineId: string, component: RateComponent, on: string) {
+function currentRate(rates: Rate[], kind: MachineKind, component: RateComponent, on: string) {
   let best: Rate | null = null;
   for (const r of rates) {
-    if (r.machine_id !== machineId || r.component !== component || r.effective_from > on) continue;
+    if (r.kind !== kind || r.component !== component || r.effective_from > on) continue;
     if (!best || r.effective_from > best.effective_from) best = r;
   }
   return best;
 }
 
 type Dialog =
-  | { kind: 'rename'; machine: Machine }
-  | { kind: 'rate'; machine: Machine; rate?: Rate; component?: RateComponent }
+  | { kind: 'machine'; machineKind: MachineKind; machine: Machine | null }
+  | { kind: 'rate'; machineKind: MachineKind; rate?: Rate; component?: RateComponent }
   | { kind: 'loader'; machine: Machine; assignment?: LoaderAssignment }
-  | { kind: 'size'; machine: Machine; size?: MachineSize }
+  | { kind: 'size'; machineKind: MachineKind; size?: MachineSize }
   | null;
 
 export default function RatesPage() {
-  const { t } = useTranslation();
-  const machines = useMachines(true);
+  const { t, i18n } = useTranslation();
+  const machines = useMachines(true).data ?? [];
   const [dialog, setDialog] = useState<Dialog>(null);
 
   const title = (() => {
     if (!dialog) return '';
-    if (dialog.kind === 'rename') return t('machines.renameTitle');
+    if (dialog.kind === 'machine') {
+      return dialog.machine
+        ? t('machines.renameTitle')
+        : t('machines.addMachineTitle', { type: t(`machineKinds.${dialog.machineKind}`) });
+    }
     if (dialog.kind === 'rate') return dialog.rate ? t('rates.correctTitle') : t('rates.change');
     if (dialog.kind === 'loader') {
-      return t('machines.changeLoaderTitle', { machine: dialog.machine.name_en });
+      return t('machines.changeLoaderTitle', {
+        machine: localName(dialog.machine.name_en, dialog.machine.name_hi, i18n.language),
+      });
     }
     return dialog.size ? t('machines.editSize') : t('machines.addSize');
   })();
+
+  // "Table polish machine 3" for the next machine of a type.
+  const suggestedName = (kind: MachineKind) => {
+    const n = machines.filter((m) => m.kind === kind).length + 1;
+    const base = machines.find((m) => m.kind === kind);
+    const strip = (name: string | null | undefined) => (name ?? '').replace(/\s*\d+$/, '');
+    return {
+      en: `${strip(base?.name_en) || t(`machineKinds.${kind}`)} ${n}`,
+      hi: base?.name_hi ? `${strip(base.name_hi)} ${n}` : '',
+    };
+  };
 
   return (
     <>
@@ -108,18 +137,28 @@ export default function RatesPage() {
       </Alert>
 
       <Stack gap="lg">
-        {(machines.data ?? []).map((m) => (
-          <MachineCard key={m.id} machine={m} open={setDialog} />
+        {MACHINE_KINDS.map((kind) => (
+          <TypeCard
+            key={kind}
+            kind={kind}
+            machines={machines.filter((m) => m.kind === kind)}
+            open={setDialog}
+          />
         ))}
       </Stack>
 
       <Modal opened={dialog !== null} onClose={() => setDialog(null)} title={title}>
-        {dialog?.kind === 'rename' && (
-          <RenameForm machine={dialog.machine} onDone={() => setDialog(null)} />
+        {dialog?.kind === 'machine' && (
+          <MachineForm
+            machine={dialog.machine}
+            kind={dialog.machineKind}
+            suggestedName={suggestedName(dialog.machineKind)}
+            onDone={() => setDialog(null)}
+          />
         )}
         {dialog?.kind === 'rate' && (
           <RateForm
-            machine={dialog.machine}
+            kind={dialog.machineKind}
             existing={dialog.rate ?? null}
             initialComponent={dialog.component}
             onDone={() => setDialog(null)}
@@ -133,46 +172,51 @@ export default function RatesPage() {
           />
         )}
         {dialog?.kind === 'size' && (
-          <SizeForm machine={dialog.machine} existing={dialog.size ?? null} onDone={() => setDialog(null)} />
+          <SizeForm kind={dialog.machineKind} existing={dialog.size ?? null} onDone={() => setDialog(null)} />
         )}
       </Modal>
     </>
   );
 }
 
-function MachineCard({ machine, open }: { machine: Machine; open: (d: Dialog) => void }) {
+function TypeCard({
+  kind,
+  machines,
+  open,
+}: {
+  kind: MachineKind;
+  machines: Machine[];
+  open: (d: Dialog) => void;
+}) {
   const { t, i18n } = useTranslation();
   const label = useComponentLabel();
   const rates = useRates().data ?? [];
-  const assignments = (useLoaderAssignments().data ?? []).filter((a) => a.machine_id === machine.id);
+  const allAssignments = useLoaderAssignments().data ?? [];
   const workers = useWorkers(true).data ?? [];
-  const sizes = (useSizes().data ?? []).filter((s) => s.machine_id === machine.id);
+  const sizes = (useSizes().data ?? []).filter((s) => s.kind === kind);
   const removeRate = useDeleteRate();
   const removeAssignment = useDeleteLoaderAssignment();
   const removeSize = useDeleteSize();
+  const removeMachine = useDeleteMachine();
   const { reachable } = useHubState();
   const today = todayISO();
 
-  const name = localName(machine.name_en, machine.name_hi, i18n.language);
-  const other = name === machine.name_en ? machine.name_hi : machine.name_en;
-  const history = rates.filter((r) => r.machine_id === machine.id);
-  const workerName = (id: string | null) => {
-    const w = workers.find((x) => x.id === id);
-    return w ? localName(w.name_en, w.name_hi, i18n.language) : t('machines.noLoader');
-  };
-  const loaderId = loaderOn(assignments, machine.id, today);
-  const loader = workers.find((w) => w.id === loaderId);
+  const ids = new Set(machines.map((m) => m.id));
+  const assignments = allAssignments.filter((a) => ids.has(a.machine_id));
+  const history = rates.filter((r) => r.kind === kind);
+  const local = (x: { name_en: string; name_hi: string | null } | undefined) =>
+    x ? localName(x.name_en, x.name_hi, i18n.language) : '';
+  const workerName = (id: string | null) =>
+    local(workers.find((x) => x.id === id)) || t('machines.noLoader');
 
   // Table polish shows the batti counts that have a rate (plus "add a batti rate").
   const shown = (role: Role) =>
-    roleComponents(machine.kind, role).filter(
-      (c) => battiOf(c) === null || history.some((r) => r.component === c),
-    );
+    roleComponents(kind, role).filter((c) => battiOf(c) === null || history.some((r) => r.component === c));
   const unitText = (c: RateComponent) =>
-    componentUnit(machine.kind, c) === 'rft' ? t('machines.perRft') : t('machines.perSqft');
+    componentUnit(kind, c) === 'rft' ? t('machines.perRft') : t('machines.perSqft');
 
   const rateCard = (c: RateComponent) => {
-    const cur = currentRate(rates, machine.id, c, today);
+    const cur = currentRate(rates, kind, c, today);
     return (
       <Card
         key={c}
@@ -180,7 +224,7 @@ function MachineCard({ machine, open }: { machine: Machine; open: (d: Dialog) =>
         radius="md"
         p="sm"
         style={{ cursor: 'pointer' }}
-        onClick={() => open({ kind: 'rate', machine, component: c })}
+        onClick={() => open({ kind: 'rate', machineKind: kind, component: c })}
       >
         <Text size="sm" c="dimmed">
           {label(c)}
@@ -217,40 +261,50 @@ function MachineCard({ machine, open }: { machine: Machine; open: (d: Dialog) =>
     });
   const deleted = { onSuccess: () => notifySaved(t('common.deleted')) };
 
+  const deleteMachine = async (m: Machine) => {
+    let entries: number;
+    try {
+      entries = (await fetchMachineDeleteImpact(m.id)).production_entries;
+    } catch (e) {
+      notifyError(e);
+      return;
+    }
+    if (entries > 0) {
+      modals.open({
+        title: t('machines.cantDeleteTitle', { name: local(m) }),
+        children: <Text size="sm">{t('machines.cantDeleteBody', { count: entries })}</Text>,
+      });
+      return;
+    }
+    confirm(t('machines.deleteMachineTitle', { name: local(m) }), t('machines.deleteMachineBody'), () =>
+      removeMachine.mutate(m.id, deleted),
+    );
+  };
+
+  const actionProps = (titleKey: string) => ({
+    disabled: !reachable,
+    title: reachable ? t(titleKey) : t('sync.needsLaptop'),
+  });
+
   return (
-    <Card withBorder opacity={machine.is_active ? 1 : 0.7}>
+    <Card withBorder>
       <Group justify="space-between" mb="sm" wrap="wrap">
-        <div>
-          <Group gap="xs">
-            <Title order={3}>{name}</Title>
-            {!machine.is_active && <Badge color="gray">{t('machines.notInUse')}</Badge>}
-          </Group>
-          {other && (
-            <Text size="sm" c="dimmed">
-              {other}
-            </Text>
-          )}
-        </div>
-        <Group gap="xs">
-          <Button variant="default" onClick={() => open({ kind: 'rename', machine })}>
-            {t('machines.rename')}
-          </Button>
-          <Button onClick={() => open({ kind: 'rate', machine })}>{t('rates.change')}</Button>
-        </Group>
+        <Title order={3}>{t(`machineKinds.${kind}`)}</Title>
+        <Button onClick={() => open({ kind: 'rate', machineKind: kind })}>{t('rates.change')}</Button>
       </Group>
 
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
         <Stack gap="xs">
           <Text fw={600}>{t('machines.operatorRates')}</Text>
-          <SimpleGrid cols={{ base: 2, xs: 2 }} spacing="xs">
+          <SimpleGrid cols={2} spacing="xs">
             {shown('operator').map(rateCard)}
           </SimpleGrid>
-          {machine.kind === 'table_polish' && (
+          {kind === 'table_polish' && (
             <Button
               variant="subtle"
               size="xs"
               leftSection={<IconPlus size={14} />}
-              onClick={() => open({ kind: 'rate', machine, component: 'polish_3' })}
+              onClick={() => open({ kind: 'rate', machineKind: kind, component: 'polish_3' })}
               style={{ alignSelf: 'flex-start' }}
             >
               {t('machines.addBatti')}
@@ -258,32 +312,114 @@ function MachineCard({ machine, open }: { machine: Machine; open: (d: Dialog) =>
           )}
         </Stack>
         <Stack gap="xs">
-          <Group justify="space-between">
-            <Text fw={600}>{t('machines.loaderRates')}</Text>
-            <Button size="xs" variant="light" onClick={() => open({ kind: 'loader', machine })}>
-              {t('machines.changeLoader')}
-            </Button>
-          </Group>
-          <Card bg="var(--mantine-color-gray-0)" radius="md" p="sm">
-            <Text size="sm" c="dimmed">
-              {t('machines.loaderNow')}
-            </Text>
-            <Text fw={700} fz="lg" c={loader ? undefined : 'orange'}>
-              {workerName(loaderId)}
-            </Text>
-            {loader?.is_archived && (
-              <Text size="xs" c="orange">
-                {t('machines.archivedLoader', { name: loader.name_en })}
-              </Text>
-            )}
-          </Card>
-          <SimpleGrid cols={{ base: 2, xs: 2 }} spacing="xs">
+          <Text fw={600}>{t('machines.loaderRates')}</Text>
+          <SimpleGrid cols={2} spacing="xs">
             {shown('loader').map(rateCard)}
           </SimpleGrid>
         </Stack>
       </SimpleGrid>
 
-      {usesSizeTable(machine.kind) && (
+      <Stack gap={4} mt="lg">
+        <Group justify="space-between">
+          <Text fw={600}>{t('machines.machinesOfType', { count: machines.filter((m) => m.is_active).length })}</Text>
+          <Button
+            size="xs"
+            variant="light"
+            leftSection={<IconPlus size={14} />}
+            {...actionProps('machines.addMachine')}
+            onClick={() => open({ kind: 'machine', machineKind: kind, machine: null })}
+          >
+            {t('machines.addMachine')}
+          </Button>
+        </Group>
+        <Table.ScrollContainer minWidth={420}>
+          <Table>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>{t('production.machine')}</Table.Th>
+                <Table.Th>{t('machines.loaderNow')}</Table.Th>
+                <Table.Th w={110} />
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {machines.map((m) => {
+                const loaderId = loaderOn(allAssignments, m.id, today);
+                const loader = workers.find((w) => w.id === loaderId);
+                const other = local(m) === m.name_en ? m.name_hi : m.name_en;
+                return (
+                  <Table.Tr key={m.id} opacity={m.is_active ? 1 : 0.6}>
+                    <Table.Td>
+                      <Group gap={6}>
+                        <Text size="sm" fw={500}>
+                          {local(m)}
+                        </Text>
+                        {!m.is_active && (
+                          <Badge size="xs" color="gray">
+                            {t('machines.notInUse')}
+                          </Badge>
+                        )}
+                      </Group>
+                      {other && (
+                        <Text size="xs" c="dimmed">
+                          {other}
+                        </Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm" c={loader ? undefined : 'orange'}>
+                        {workerName(loaderId)}
+                      </Text>
+                      {loader?.is_archived && (
+                        <Text size="xs" c="orange">
+                          {t('machines.archivedLoader', { name: loader.name_en })}
+                        </Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap={4} justify="flex-end" wrap="nowrap">
+                        <Button
+                          size="compact-xs"
+                          variant="light"
+                          leftSection={<IconUserCog size={14} />}
+                          onClick={() => open({ kind: 'loader', machine: m })}
+                        >
+                          {t('machines.changeLoader')}
+                        </Button>
+                        <Menu position="bottom-end" withinPortal>
+                          <Menu.Target>
+                            <ActionIcon variant="subtle" color="gray" aria-label={t('common.actions')}>
+                              <IconDots size={16} />
+                            </ActionIcon>
+                          </Menu.Target>
+                          <Menu.Dropdown>
+                            <Menu.Item
+                              leftSection={<IconPencil size={14} />}
+                              {...actionProps('machines.rename')}
+                              onClick={() => open({ kind: 'machine', machineKind: kind, machine: m })}
+                            >
+                              {t('machines.rename')}
+                            </Menu.Item>
+                            <Menu.Item
+                              color="red"
+                              leftSection={<IconTrash size={14} />}
+                              {...actionProps('common.delete')}
+                              onClick={() => void deleteMachine(m)}
+                            >
+                              {t('common.delete')}
+                            </Menu.Item>
+                          </Menu.Dropdown>
+                        </Menu>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                );
+              })}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      </Stack>
+
+      {usesSizeTable(kind) && (
         <Stack gap={4} mt="lg">
           <Group justify="space-between">
             <Text fw={600}>{t('machines.sizes')}</Text>
@@ -291,20 +427,20 @@ function MachineCard({ machine, open }: { machine: Machine; open: (d: Dialog) =>
               size="xs"
               variant="light"
               leftSection={<IconPlus size={14} />}
-              onClick={() => open({ kind: 'size', machine })}
+              onClick={() => open({ kind: 'size', machineKind: kind })}
             >
               {t('machines.addSize')}
             </Button>
           </Group>
           <Text size="xs" c="dimmed">
-            {machine.kind === 'single_cutting' ? t('machines.sizesHelpSingle') : t('machines.sizesHelpDouble')}
+            {kind === 'single_cutting' ? t('machines.sizesHelpSingle') : t('machines.sizesHelpDouble')}
           </Text>
           <Table.ScrollContainer minWidth={420}>
             <Table striped>
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>
-                    {t('production.size')} ({machine.kind === 'single_cutting' ? t('units.in') : t('units.ft')})
+                    {t('production.size')} ({kind === 'single_cutting' ? t('units.in') : t('units.ft')})
                   </Table.Th>
                   <Table.Th className="num">{t('machines.rftPerPiece')}</Table.Th>
                   <Table.Th className="num">{t('machines.sqftPerPiece')}</Table.Th>
@@ -323,9 +459,8 @@ function MachineCard({ machine, open }: { machine: Machine; open: (d: Dialog) =>
                           variant="subtle"
                           color="gray"
                           aria-label={t('common.edit')}
-                          disabled={!reachable}
-                          title={reachable ? t('common.edit') : t('sync.needsLaptop')}
-                          onClick={() => open({ kind: 'size', machine, size: s })}
+                          {...actionProps('common.edit')}
+                          onClick={() => open({ kind: 'size', machineKind: kind, size: s })}
                         >
                           <IconPencil size={16} />
                         </ActionIcon>
@@ -333,8 +468,7 @@ function MachineCard({ machine, open }: { machine: Machine; open: (d: Dialog) =>
                           variant="subtle"
                           color="red"
                           aria-label={t('common.delete')}
-                          disabled={!reachable}
-                          title={reachable ? t('common.delete') : t('sync.needsLaptop')}
+                          {...actionProps('common.delete')}
                           onClick={() =>
                             confirm(t('machines.deleteSizeTitle'), t('machines.deleteSizeBody'), () =>
                               removeSize.mutate(s.id, deleted),
@@ -392,9 +526,8 @@ function MachineCard({ machine, open }: { machine: Machine; open: (d: Dialog) =>
                               variant="subtle"
                               color="gray"
                               aria-label={t('rates.correct')}
-                              disabled={!reachable}
-                              title={reachable ? t('rates.correct') : t('sync.needsLaptop')}
-                              onClick={() => open({ kind: 'rate', machine, rate: r })}
+                              {...actionProps('rates.correct')}
+                              onClick={() => open({ kind: 'rate', machineKind: kind, rate: r })}
                             >
                               <IconPencil size={16} />
                             </ActionIcon>
@@ -402,8 +535,7 @@ function MachineCard({ machine, open }: { machine: Machine; open: (d: Dialog) =>
                               variant="subtle"
                               color="red"
                               aria-label={t('common.delete')}
-                              disabled={!reachable}
-                              title={reachable ? t('common.delete') : t('sync.needsLaptop')}
+                              {...actionProps('common.delete')}
                               onClick={() =>
                                 confirm(t('rates.deleteTitle'), t('rates.deleteBody'), () =>
                                   removeRate.mutate(r.id, deleted),
@@ -430,57 +562,64 @@ function MachineCard({ machine, open }: { machine: Machine; open: (d: Dialog) =>
                 {t('machines.noLoader')}
               </Text>
             ) : (
-              <Table>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>{t('machines.loaderFrom')}</Table.Th>
-                    <Table.Th>{t('production.loader')}</Table.Th>
-                    <Table.Th>{t('rates.note')}</Table.Th>
-                    <Table.Th w={80} />
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {assignments.map((a) => (
-                    <Table.Tr key={a.id}>
-                      <Table.Td>{formatDate(a.effective_from)}</Table.Td>
-                      <Table.Td>{workerName(a.worker_id)}</Table.Td>
-                      <Table.Td>
-                        <Text size="sm" c="dimmed" lineClamp={1}>
-                          {a.note ?? ''}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap={4} wrap="nowrap">
-                          <ActionIcon
-                            variant="subtle"
-                            color="gray"
-                            aria-label={t('rates.correct')}
-                            disabled={!reachable}
-                            title={reachable ? t('rates.correct') : t('sync.needsLaptop')}
-                            onClick={() => open({ kind: 'loader', machine, assignment: a })}
-                          >
-                            <IconPencil size={16} />
-                          </ActionIcon>
-                          <ActionIcon
-                            variant="subtle"
-                            color="red"
-                            aria-label={t('common.delete')}
-                            disabled={!reachable}
-                            title={reachable ? t('common.delete') : t('sync.needsLaptop')}
-                            onClick={() =>
-                              confirm(t('machines.deleteLoaderTitle'), t('machines.deleteLoaderBody'), () =>
-                                removeAssignment.mutate(a.id, deleted),
-                              )
-                            }
-                          >
-                            <IconTrash size={16} />
-                          </ActionIcon>
-                        </Group>
-                      </Table.Td>
+              <Table.ScrollContainer minWidth={480}>
+                <Table>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>{t('production.machine')}</Table.Th>
+                      <Table.Th>{t('machines.loaderFrom')}</Table.Th>
+                      <Table.Th>{t('production.loader')}</Table.Th>
+                      <Table.Th>{t('rates.note')}</Table.Th>
+                      <Table.Th w={80} />
                     </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {assignments.map((a) => {
+                      const m = machines.find((x) => x.id === a.machine_id)!;
+                      return (
+                        <Table.Tr key={a.id}>
+                          <Table.Td>{local(m)}</Table.Td>
+                          <Table.Td>{formatDate(a.effective_from)}</Table.Td>
+                          <Table.Td>{workerName(a.worker_id)}</Table.Td>
+                          <Table.Td>
+                            <Text size="sm" c="dimmed" lineClamp={1}>
+                              {a.note ?? ''}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Group gap={4} wrap="nowrap">
+                              <ActionIcon
+                                variant="subtle"
+                                color="gray"
+                                aria-label={t('rates.correct')}
+                                {...actionProps('rates.correct')}
+                                onClick={() => open({ kind: 'loader', machine: m, assignment: a })}
+                              >
+                                <IconPencil size={16} />
+                              </ActionIcon>
+                              <ActionIcon
+                                variant="subtle"
+                                color="red"
+                                aria-label={t('common.delete')}
+                                {...actionProps('common.delete')}
+                                onClick={() =>
+                                  confirm(
+                                    t('machines.deleteLoaderTitle'),
+                                    t('machines.deleteLoaderBody'),
+                                    () => removeAssignment.mutate(a.id, deleted),
+                                  )
+                                }
+                              >
+                                <IconTrash size={16} />
+                              </ActionIcon>
+                            </Group>
+                          </Table.Td>
+                        </Table.Tr>
+                      );
+                    })}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
             )}
           </Accordion.Panel>
         </Accordion.Item>
@@ -503,48 +642,67 @@ function FormButtons({ onDone, loading, disabled }: { onDone: () => void; loadin
   );
 }
 
-function RenameForm({ machine, onDone }: { machine: Machine; onDone: () => void }) {
+/** Add a machine of a type, or rename / stop using one. */
+function MachineForm({
+  machine,
+  kind,
+  suggestedName,
+  onDone,
+}: {
+  machine: Machine | null;
+  kind: MachineKind;
+  suggestedName: { en: string; hi: string };
+  onDone: () => void;
+}) {
   const { t } = useTranslation();
-  const save = useUpdateMachine();
-  const [nameEn, setNameEn] = useState(machine.name_en);
-  const [nameHi, setNameHi] = useState(machine.name_hi ?? '');
-  const [active, setActive] = useState(machine.is_active);
+  const update = useUpdateMachine();
+  const create = useCreateMachine();
+  const [nameEn, setNameEn] = useState(machine?.name_en ?? suggestedName.en);
+  const [nameHi, setNameHi] = useState(machine?.name_hi ?? suggestedName.hi);
+  const [active, setActive] = useState(machine?.is_active ?? true);
+  const done = {
+    onSuccess: () => {
+      notifySaved(t('common.saved'));
+      onDone();
+    },
+  };
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        save.mutate(
-          { id: machine.id, name_en: nameEn.trim(), name_hi: nameHi.trim() || null, is_active: active },
-          {
-            onSuccess: () => {
-              notifySaved(t('common.saved'));
-              onDone();
-            },
-          },
-        );
+        const names = { name_en: nameEn.trim(), name_hi: nameHi.trim() || null };
+        if (machine) update.mutate({ id: machine.id, ...names, is_active: active }, done);
+        else create.mutate({ kind, ...names }, done);
       }}
     >
       <Stack>
         <TextInput label={t('machines.nameEn')} required data-autofocus value={nameEn} onChange={(e) => setNameEn(e.currentTarget.value)} />
         <TextInput label={t('machines.nameHi')} lang="hi" value={nameHi} onChange={(e) => setNameHi(e.currentTarget.value)} />
-        <Switch
-          label={active ? t('machines.inUse') : t('machines.notInUse')}
-          checked={active}
-          onChange={(e) => setActive(e.currentTarget.checked)}
+        {machine && (
+          <Switch
+            label={active ? t('machines.inUse') : t('machines.notInUse')}
+            description={t('machines.retireHelp')}
+            checked={active}
+            onChange={(e) => setActive(e.currentTarget.checked)}
+          />
+        )}
+        <FormButtons
+          onDone={onDone}
+          loading={update.isPending || create.isPending}
+          disabled={!nameEn.trim()}
         />
-        <FormButtons onDone={onDone} loading={save.isPending} disabled={!nameEn.trim()} />
       </Stack>
     </form>
   );
 }
 
 function RateForm({
-  machine,
+  kind,
   existing,
   initialComponent,
   onDone,
 }: {
-  machine: Machine;
+  kind: MachineKind;
   existing: Rate | null;
   initialComponent?: RateComponent;
   onDone: () => void;
@@ -552,24 +710,24 @@ function RateForm({
   const { t } = useTranslation();
   const label = useComponentLabel();
   const save = useSaveRate();
-  const components = allowedComponents(machine.kind);
+  const components = allowedComponents(kind);
   const [component, setComponent] = useState<RateComponent>(
     existing?.component ?? initialComponent ?? components[0],
   );
   const [rate, setRate] = useState<string | number>(existing ? Number(existing.rate) : '');
   const [from, setFrom] = useState<string | null>(existing?.effective_from ?? todayISO());
   const [note, setNote] = useState(existing?.note ?? '');
-  const unit = componentUnit(machine.kind, component) === 'rft' ? t('machines.perRft') : t('machines.perSqft');
+  const unit = componentUnit(kind, component) === 'rft' ? t('machines.perRft') : t('machines.perSqft');
   const valid = rate !== '' && Number(rate) >= 0 && from;
 
   const submit = () => {
     if (!valid) return;
     const common = { rate: String(rate), effective_from: from!, note: note || null };
-    const text = `${machine.name_en} · ${label(component)} ₹${rate} · ${formatDate(from, 'short')}`;
+    const text = `${t(`machineKinds.${kind}`)} · ${label(component)} ₹${rate} · ${formatDate(from, 'short')}`;
     save.mutate(
       existing
         ? { id: existing.id, body: common, label: text }
-        : { body: { ...common, machine_id: machine.id, component }, label: text },
+        : { body: { ...common, kind, component }, label: text },
       {
         onSuccess: (r) => {
           notifyResult(r, t('common.saved'));
@@ -601,11 +759,11 @@ function RateForm({
             data={[
               {
                 group: t('machines.operatorRates'),
-                items: roleComponents(machine.kind, 'operator').map((c) => ({ value: c, label: label(c) })),
+                items: roleComponents(kind, 'operator').map((c) => ({ value: c, label: label(c) })),
               },
               {
                 group: t('machines.loaderRates'),
-                items: roleComponents(machine.kind, 'loader').map((c) => ({ value: c, label: label(c) })),
+                items: roleComponents(kind, 'loader').map((c) => ({ value: c, label: label(c) })),
               },
             ]}
           />
@@ -726,11 +884,11 @@ function LoaderForm({
 }
 
 function SizeForm({
-  machine,
+  kind,
   existing,
   onDone,
 }: {
-  machine: Machine;
+  kind: MachineKind;
   existing: MachineSize | null;
   onDone: () => void;
 }) {
@@ -741,18 +899,18 @@ function SizeForm({
   const [width, setWidth] = useState<string | number>(num(existing?.width));
   const [rft, setRft] = useState<string | number>(num(existing?.rft));
   const [sqft, setSqft] = useState<string | number>(num(existing?.sqft));
-  const unit = machine.kind === 'single_cutting' ? t('units.in') : t('units.ft');
+  const unit = kind === 'single_cutting' ? t('units.in') : t('units.ft');
   const positive = (v: string | number) => v !== '' && Number(v) > 0;
   const valid = [length, width, rft, sqft].every(positive);
 
   const submit = () => {
     if (!valid) return;
     const body = { length: String(length), width: String(width), rft: String(rft), sqft: String(sqft) };
-    const text = `${machine.name_en} · ${sizeLabel(body.length, body.width)}`;
+    const text = `${t(`machineKinds.${kind}`)} · ${sizeLabel(body.length, body.width)}`;
     save.mutate(
       existing
         ? { id: existing.id, body, label: text }
-        : { body: { ...body, machine_id: machine.id }, label: text },
+        : { body: { ...body, kind }, label: text },
       {
         onSuccess: (r) => {
           notifyResult(r, t('common.saved'));

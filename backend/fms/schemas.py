@@ -59,6 +59,12 @@ class WorkerTypeOut(Out):
 
 
 # -------------------------------------------------------------------- machines
+class MachineCreate(In):
+    kind: MachineKind
+    name_en: Annotated[str, Field(min_length=1, max_length=80)]
+    name_hi: Annotated[str, Field(max_length=80)] | None = None
+
+
 class MachineUpdate(In):
     name_en: Annotated[str, Field(min_length=1, max_length=80)] | None = None
     name_hi: Annotated[str, Field(max_length=80)] | None = None
@@ -79,7 +85,7 @@ class MachineOut(Out):
 
 class MachineSizeCreate(In):
     id: UUID | None = None
-    machine_id: str
+    kind: MachineKind
     length: SizeValue
     width: SizeValue
     rft: SizeValue
@@ -95,13 +101,18 @@ class MachineSizeUpdate(In):
 
 class MachineSizeOut(Out):
     id: str
-    machine_id: str
+    kind: MachineKind
     length: Decimal
     width: Decimal
     rft: Decimal
     sqft: Decimal
     created_at: datetime
     updated_at: datetime
+
+
+class MachineDeleteImpact(BaseModel):
+    machine_id: str
+    production_entries: int  # a machine with entries can only be retired, not deleted
 
 
 class LoaderAssignmentCreate(In):
@@ -177,7 +188,7 @@ class DeleteImpact(BaseModel):
 class RateCreate(In):
     # Set by the device that created the record (see services/_common.py: existing_replay).
     id: UUID | None = None
-    machine_id: str
+    kind: MachineKind
     component: Component
     rate: RateValue
     effective_from: date
@@ -192,7 +203,7 @@ class RateUpdate(In):
 
 class RateOut(Out):
     id: str
-    machine_id: str
+    kind: MachineKind
     component: str
     unit: Unit
     rate: Decimal
@@ -203,7 +214,7 @@ class RateOut(Out):
 
 
 class CurrentRateOut(BaseModel):
-    machine_id: str
+    kind: MachineKind
     component: str
     unit: Unit
     rate: Decimal | None

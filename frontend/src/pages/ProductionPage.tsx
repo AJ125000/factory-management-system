@@ -75,7 +75,7 @@ import {
   totalOf,
 } from '../lib/wages';
 import { useComponentLabel } from './RatesPage';
-import { entryDetails, entrySize } from '../lib/entryText';
+import { entryDetails, entrySize, machineOptions } from '../lib/entryText';
 
 const LAST_MACHINE = 'fms.lastMachine';
 
@@ -112,12 +112,12 @@ function localPreview(
   rates: Rate[],
   assignments: LoaderAssignment[],
 ): WagePreview | null {
-  const piece = resolvePiece(machine.kind, machine.id, sizes, input);
+  const piece = resolvePiece(machine.kind, sizes, input);
   if (!piece) return null;
   const p = { ...piece, cuts: input.cuts, quantity: input.quantity, batti: input.batti };
   const date = input.entry_date;
-  const op = calculateWage(machine.kind, 'operator', p, ratesFor(rates, machine.id, machine.kind, 'operator', date));
-  const ld = calculateWage(machine.kind, 'loader', p, ratesFor(rates, machine.id, machine.kind, 'loader', date));
+  const op = calculateWage(machine.kind, 'operator', p, ratesFor(rates, machine.kind, 'operator', date));
+  const ld = calculateWage(machine.kind, 'loader', p, ratesFor(rates, machine.kind, 'loader', date));
   const loader = input.loader_id ?? loaderOn(assignments, machine.id, date);
   return {
     area_sqft: totalOf(piece.piece_sqft, input.quantity),
@@ -240,7 +240,7 @@ export default function ProductionPage() {
               placeholder={t('production.filterMachine')}
               clearable
               w={220}
-              data={machines.map((m) => ({ value: m.id, label: localName(m.name_en, m.name_hi, i18n.language) }))}
+              data={machineOptions(machines, t, i18n.language)}
               value={machineFilter}
               onChange={(v) => {
                 setMachineFilter(v);
@@ -469,7 +469,7 @@ function EntryForm({
     setValues((v) => ({ ...v, [key]: value }));
 
   const machine = machines.find((m) => m.id === values.machine_id);
-  const machineSizes = sizes.filter((s) => s.machine_id === machine?.id);
+  const machineSizes = sizes.filter((s) => s.kind === machine?.kind);
   const name = (id: string | null) => {
     const w = allWorkers.find((x) => x.id === id);
     return w ? localName(w.name_en, w.name_hi, i18n.language) : '';
@@ -496,14 +496,14 @@ function EntryForm({
 
   // The size as the owner typed it maps to a standard size (double edge) or not.
   const piece =
-    machine && input ? resolvePiece(machine.kind, machine.id, sizes, input) : null;
+    machine && input ? resolvePiece(machine.kind, sizes, input) : null;
   const usualLoader =
     machine && values.entry_date ? loaderOn(assignments, machine.id, values.entry_date) : null;
   const loaders = allWorkers.filter((w) => w.worker_type.role === 'loader' && !w.is_archived);
   const battiChoices = (() => {
     const withRates = new Set(
       (rates ?? [])
-        .filter((r) => r.machine_id === machine?.id)
+        .filter((r) => r.kind === machine?.kind)
         .map((r) => battiOf(r.component))
         .filter((b): b is number => b !== null),
     );
@@ -595,9 +595,15 @@ function EntryForm({
             placeholder={t('production.selectMachine')}
             required
             allowDeselect={false}
-            data={usable.map((m) => ({ value: m.id, label: localName(m.name_en, m.name_hi, i18n.language) }))}
+            data={machineOptions(usable, t, i18n.language)}
             value={values.machine_id}
-            onChange={(v) => setValues((s) => ({ ...s, machine_id: v, size_id: null }))}
+            onChange={(v) =>
+              setValues((s) => {
+                // Machines of the same type share sizes and batti rates: keep them.
+                const sameKind = machines.find((m) => m.id === v)?.kind === machine?.kind;
+                return { ...s, machine_id: v, size_id: sameKind ? s.size_id : null };
+              })
+            }
           />
           <DateField
             label={t('production.entryDate')}

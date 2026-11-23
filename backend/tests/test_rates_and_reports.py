@@ -1,13 +1,11 @@
 from datetime import date, timedelta
 
-from conftest import MACHINES
-
 
 def test_rate_component_must_match_machine(api):
     resp = api.c.post(
         "/api/rates",
         json={
-            "machine_id": MACHINES["double_edge"],
+            "kind": "double_edge",
             "component": "loading",  # double edge loaders are paid for unloading only
             "rate": "1",
             "effective_from": "2026-01-01",
@@ -22,7 +20,7 @@ def test_duplicate_effective_date_conflicts(api):
     resp = api.c.post(
         "/api/rates",
         json={
-            "machine_id": MACHINES["block"],
+            "kind": "block_cutting",
             "component": "loading",
             "rate": "0.6",
             "effective_from": "2026-01-01",
@@ -36,7 +34,7 @@ def test_current_rates(api):
     api.rate("machine_operator", "cutting", "2", "2026-03-01")
     current = api.ok(api.c.get("/api/rates/current", params={"on": "2026-02-15"}))
     cutting = next(
-        r for r in current if r["component"] == "cutting" and r["machine_id"] == MACHINES["block"]
+        r for r in current if r["component"] == "cutting" and r["kind"] == "block_cutting"
     )
     assert cutting["rate"] == "1.5"
     assert cutting["unit"] == "sqft"

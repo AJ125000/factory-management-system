@@ -29,10 +29,11 @@ export interface Machine {
   is_active: boolean;
 }
 
-/** A standard size and what one piece counts for. Feet on double edge, inches on single cutting. */
+/** A standard size and what one piece counts for, shared by every machine of the type.
+ * Feet on double edge, inches on single cutting. */
 export interface MachineSize {
   id: string;
-  machine_id: string;
+  kind: MachineKind;
   length: Decimal;
   width: Decimal;
   rft: Decimal;
@@ -71,9 +72,10 @@ export interface WorkerInput {
   allow_duplicate_name?: boolean;
 }
 
+/** A rate of a machine type: every machine of the type is paid at it. */
 export interface Rate {
   id: string;
-  machine_id: string;
+  kind: MachineKind;
   component: RateComponent;
   unit: Unit;
   rate: Decimal;
@@ -82,7 +84,7 @@ export interface Rate {
 }
 
 export interface CurrentRate {
-  machine_id: string;
+  kind: MachineKind;
   component: RateComponent;
   unit: Unit;
   rate: Decimal | null;

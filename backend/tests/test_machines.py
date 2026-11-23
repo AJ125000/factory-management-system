@@ -10,8 +10,8 @@ from conftest import MACHINES
 from fms.db import alembic_config, make_engine, run_migrations
 
 
-def _sizes(api, machine):
-    sizes = api.ok(api.c.get("/api/machine-sizes", params={"machine_id": MACHINES[machine]}))
+def _sizes(api, kind):
+    sizes = api.ok(api.c.get("/api/machine-sizes", params={"kind": kind}))
     return {(Decimal(s["length"]), Decimal(s["width"])): s for s in sizes}
 
 
@@ -33,7 +33,8 @@ def test_machines_and_sheet_are_set_up(api):
         "single_cutting",
         "block_cutting",
     ]
-    assert machines[0]["name_hi"] == "डबल एज कटिंग मशीन"
+    assert machines[0]["name_hi"] == "डबल एज कटिंग मशीन 1"
+    assert machines[3]["name_en"] == "Splitting machine 1"
 
     single = _sizes(api, "single_cutting")
     assert len(single) == 13
@@ -50,16 +51,16 @@ def test_machines_and_sheet_are_set_up(api):
     }
 
     current = api.ok(api.c.get("/api/rates/current", params={"on": "2026-06-01"}))
-    by = {(r["machine_id"], r["component"]): (r["rate"], r["unit"]) for r in current}
-    assert by[(MACHINES["double_edge"], "cutting")] == ("0.22", "rft")
-    assert by[(MACHINES["single_cutting"], "cutting")] == ("0.28", "rft")
-    assert by[(MACHINES["table_polish"], "polish_1")] == ("0.45", "sqft")
-    assert by[(MACHINES["table_polish"], "polish_2")] == ("0.90", "sqft")
-    assert by[(MACHINES["table_polish"], "polish_4")] == ("1.10", "sqft")
-    assert by[(MACHINES["table_polish"], "polish_5")] == ("1.25", "sqft")
-    assert (MACHINES["table_polish"], "polish_3") not in by  # no 3-batti rate on the sheet
-    for machine in ("double_edge", "table_polish", "single_cutting"):
-        assert by[(MACHINES[machine], "unloading")] == ("0.15", "sqft")
+    by = {(r["kind"], r["component"]): (r["rate"], r["unit"]) for r in current}
+    assert by[("double_edge", "cutting")] == ("0.22", "rft")
+    assert by[("single_cutting", "cutting")] == ("0.28", "rft")
+    assert by[("table_polish", "polish_1")] == ("0.45", "sqft")
+    assert by[("table_polish", "polish_2")] == ("0.90", "sqft")
+    assert by[("table_polish", "polish_4")] == ("1.10", "sqft")
+    assert by[("table_polish", "polish_5")] == ("1.25", "sqft")
+    assert ("table_polish", "polish_3") not in by  # no 3-batti rate on the sheet
+    for kind in ("double_edge", "table_polish", "single_cutting"):
+        assert by[(kind, "unloading")] == ("0.15", "sqft")
 
 
 # --------------------------------------------------------------- operator pay
@@ -157,7 +158,7 @@ def test_owner_adds_a_size(api, op):
         api.c.post(
             "/api/machine-sizes",
             json={
-                "machine_id": MACHINES["single_cutting"],
+                "kind": "single_cutting",
                 "length": "12",
                 "width": "12",
                 "rft": "5",
@@ -169,7 +170,7 @@ def test_owner_adds_a_size(api, op):
     dup = api.c.post(
         "/api/machine-sizes",
         json={
-            "machine_id": MACHINES["single_cutting"],
+            "kind": "single_cutting",
             "length": "22",
             "width": "16",
             "rft": "1",
@@ -180,7 +181,7 @@ def test_owner_adds_a_size(api, op):
     no_table = api.c.post(
         "/api/machine-sizes",
         json={
-            "machine_id": MACHINES["table_polish"],
+            "kind": "table_polish",
             "length": "1",
             "width": "1",
             "rft": "1",
@@ -461,12 +462,75 @@ def test_upgrade_keeps_existing_data(tmp_path):
             sa.text("SELECT machine_id, piece_sqft, piece_rft FROM production_entries")
         ).one()
         rates = conn.execute(
-            sa.text(
-                "SELECT component, rate, machine_id FROM rates WHERE id IN ('r1', 'r2') ORDER BY id"
-            )
+            sa.text("SELECT component, rate, kind FROM rates WHERE id IN ('r1', 'r2') ORDER BY id")
         ).all()
         roles = dict(conn.execute(sa.text("SELECT code, role FROM worker_types")).all())
     engine.dispose()
     assert entry == (MACHINES["block"], "3.75", None)
-    assert rates == [("cutting", "1.5", MACHINES["block"]), ("loading", "0.5", MACHINES["block"])]
+    assert rates == [("cutting", "1.5", "block_cutting"), ("loading", "0.5", "block_cutting")]
     assert roles == {"machine_operator": "operator", "loader": "loader"}
+
+
+# ------------------------------------------------------- several machines per type
+def _add_machine(api, kind, name):
+    return api.ok(api.c.post("/api/machines", json={"kind": kind, "name_en": name}), 201)
+
+
+def test_machines_of_a_type_share_rates_and_sizes_but_not_loaders(api, op):
+    polish2 = _add_machine(api, "table_polish", "Table polish machine 2")
+    single2 = _add_machine(api, "single_cutting", "Single cutting machine 2")
+    raju, shyam = api.worker("Raju", "loader"), api.worker("Shyam", "loader")
+    api.assign("table_polish", raju, "2026-03-01")
+    api.assign(polish2["id"], shyam, "2026-03-01")
+
+    a = api.entry(op, "2026-03-02", "2", "1", cuts=0, quantity=10, machine="table_polish", batti=4)
+    b = api.entry(op, "2026-03-02", "2", "1", cuts=0, quantity=10, machine=polish2["id"], batti=4)
+    assert a["wage"] == b["wage"] == "22.00"  # the type's 4-batti rate
+    assert (a["loader_worker_id"], b["loader_worker_id"]) == (raju["id"], shyam["id"])
+
+    # A new rate for the type pays every machine of it.
+    api.rate("table_polish", "polish_4", "1.20", "2026-03-10")
+    c = api.entry(op, "2026-03-10", "2", "1", cuts=0, quantity=10, machine=polish2["id"], batti=4)
+    assert c["wage"] == "24.00"
+
+    # The new single cutting machine uses the type's size table.
+    size = _size_id(api, "single_cutting", "22.5", "22.5")
+    d = api.entry(op, "2026-03-02", machine=single2["id"], size_id=size, quantity=10)
+    assert (d["piece_rft"], d["wage"]) == ("8", "22.40")
+    assert single2["code"] == "single_cutting_2"
+
+
+def test_retiring_and_deleting_machines(api, op):
+    spare = _add_machine(api, "block_cutting", "Splitting machine 2")
+    used = _add_machine(api, "block_cutting", "Splitting machine 3")
+    api.rate("block", "cutting", "1.5", "2026-01-01")
+    api.entry(op, "2026-03-02", machine=used["id"])
+    raju = api.worker("Raju", "loader")
+    api.assign(spare["id"], raju, "2026-03-01")
+
+    impact = api.ok(api.c.get(f"/api/machines/{used['id']}/delete-impact"))
+    assert impact["production_entries"] == 1
+    refused = api.c.delete(f"/api/machines/{used['id']}")
+    assert refused.json()["error"]["details"]["reason"] == "machine_has_entries"
+
+    # Retired: no new entries, but its wages stay.
+    api.ok(api.c.patch(f"/api/machines/{used['id']}", json={"is_active": False}))
+    assert api.wages("2026-03-01", "2026-03-31")["total_wage"] == "180.00"
+    later = api.c.post(
+        "/api/production",
+        json={
+            "worker_id": op["id"],
+            "machine_id": used["id"],
+            "entry_date": "2026-03-03",
+            "length_ft": "2",
+            "width_ft": "3",
+            "cuts": 2,
+            "quantity": 5,
+        },
+    )
+    assert later.json()["error"]["details"]["reason"] == "machine_inactive"
+
+    # A machine never used can be deleted, along with its loader history.
+    api.ok(api.c.delete(f"/api/machines/{spare['id']}"), 204)
+    assert spare["id"] not in {m["id"] for m in api.ok(api.c.get("/api/machines"))}
+    assert api.ok(api.c.get("/api/loader-assignments")) == []

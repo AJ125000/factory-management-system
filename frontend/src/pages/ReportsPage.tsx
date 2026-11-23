@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 
 import { useMachines, useProductionSummary, useWorkers } from '../api/hooks';
-import { localName } from '../i18n';
+import { machineOptions } from '../lib/entryText';
 import type { GroupBy } from '../api/types';
 import { ExportMenu } from '../components/ExportMenu';
 import {
@@ -105,7 +105,7 @@ export default function ReportsPage() {
             placeholder={t('production.filterMachine')}
             clearable
             w={220}
-            data={machines.map((m) => ({ value: m.id, label: localName(m.name_en, m.name_hi, i18n.language) }))}
+            data={machineOptions(machines, t, i18n.language)}
             value={machineId}
             onChange={setMachineId}
           />

@@ -7,7 +7,6 @@ from openpyxl import load_workbook
 
 from fms.config import Settings
 from fms.main import create_app
-from fms.services.machines import DOUBLE_EDGE_ID
 
 
 def _seed(api):
@@ -55,7 +54,7 @@ def test_wages_excel_in_english(api):
     entries = _rows(wb["Entries"])
     first, loader = entries[3], entries[4]
     assert first[0].date() == date(2026, 1, 5)  # a real date cell
-    assert first[1:5] == ["Ramesh", "Operator", "Cutting machine", "2 × 3 ft"]
+    assert first[1:5] == ["Ramesh", "Operator", "Splitting machine 1", "2 × 3 ft"]
     assert first[10] == "Cutting 1.5/sq ft"
     assert loader[1:3] == ["Suresh", "Loader"]
     assert Decimal(str(loader[11])) == Decimal("37.5")
@@ -117,7 +116,7 @@ def test_errors_carry_reason_codes(api):
     wrong = api.c.post(
         "/api/rates",
         json={
-            "machine_id": DOUBLE_EDGE_ID,
+            "kind": "double_edge",
             "component": "loading",
             "rate": "1",
             "effective_from": "2026-01-01",

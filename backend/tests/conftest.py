@@ -17,7 +17,7 @@ from fms.services.machines import (
 
 OWNER_PASSWORD = "owner-pass-123"
 
-# Rates used to belong to worker types, which were the two jobs at the cutting machine.
+# The first machine of each type (made by the migrations).
 MACHINES = {
     "machine_operator": BLOCK_CUTTING_ID,
     "loader": BLOCK_CUTTING_ID,
@@ -25,6 +25,15 @@ MACHINES = {
     "double_edge": DOUBLE_EDGE_ID,
     "table_polish": TABLE_POLISH_ID,
     "single_cutting": SINGLE_CUTTING_ID,
+}
+# Rates belong to the machine type; the old worker type codes meant the original machine.
+KINDS = {
+    "machine_operator": "block_cutting",
+    "loader": "block_cutting",
+    "block": "block_cutting",
+    "double_edge": "double_edge",
+    "table_polish": "table_polish",
+    "single_cutting": "single_cutting",
 }
 
 
@@ -65,7 +74,7 @@ class Api:
 
     def rate(self, machine: str, component: str, value: str, effective_from: str) -> dict:
         body = {
-            "machine_id": MACHINES.get(machine, machine),
+            "kind": KINDS.get(machine, machine),
             "component": component,
             "rate": value,
             "effective_from": effective_from,

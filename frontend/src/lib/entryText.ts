@@ -2,7 +2,8 @@
 
 import type { TFunction } from 'i18next';
 
-import type { ProductionEntry, RateComponent, WageLine } from '../api/types';
+import type { Machine, MachineKind, ProductionEntry, RateComponent, WageLine } from '../api/types';
+import { localName } from '../i18n';
 import { formatFeet, formatNumber, formatRate } from './format';
 import { battiOf } from './wages';
 
@@ -46,4 +47,21 @@ export function lineBasis(l: WageLine, t: T): string {
 /** "₹0.22/running ft" */
 export function lineRate(l: WageLine, t: T): string {
   return `${formatRate(l.rate)}/${t(unitKey(l))}`;
+}
+
+export const MACHINE_KINDS: MachineKind[] = [
+  'double_edge',
+  'table_polish',
+  'single_cutting',
+  'block_cutting',
+];
+
+/** Machines for a dropdown, grouped by type: "Table polish" → machine 1, machine 2... */
+export function machineOptions(machines: Machine[], t: T, lang: string) {
+  return MACHINE_KINDS.map((kind) => ({
+    group: String(t(`machineKinds.${kind}`)),
+    items: machines
+      .filter((m) => m.kind === kind)
+      .map((m) => ({ value: m.id, label: localName(m.name_en, m.name_hi, lang) })),
+  })).filter((g) => g.items.length > 0);
 }

@@ -172,16 +172,16 @@ export function calculateWage(
   return { lines, total: paiseToString(total), missing: [] };
 }
 
-/** The rate in effect on a date for a machine (same rule as the hub's RateBook). */
+/** The rate in effect on a date for a machine type (same rule as the hub's RateBook). */
 export function rateOn(
   rates: Rate[],
-  machineId: string,
+  kind: MachineKind,
   component: RateComponent,
   date: string,
 ): string | null {
   let best: Rate | null = null;
   for (const r of rates) {
-    if (r.machine_id !== machineId || r.component !== component) continue;
+    if (r.kind !== kind || r.component !== component) continue;
     if (r.effective_from > date) continue; // ISO dates compare correctly as strings
     if (!best || r.effective_from > best.effective_from) best = r;
   }
@@ -190,14 +190,11 @@ export function rateOn(
 
 export function ratesFor(
   rates: Rate[],
-  machineId: string,
   kind: MachineKind,
   role: Role,
   date: string,
 ): Partial<Record<RateComponent, string | null>> {
-  return Object.fromEntries(
-    roleComponents(kind, role).map((c) => [c, rateOn(rates, machineId, c, date)]),
-  );
+  return Object.fromEntries(roleComponents(kind, role).map((c) => [c, rateOn(rates, kind, c, date)]));
 }
 
 /** The loader at a machine on a date (same rule as the hub's LoaderBook). */
@@ -221,10 +218,10 @@ export interface Piece {
   size: MachineSize | null;
 }
 
-/** The table size with these measurements, either way round. */
+/** The type's table size with these measurements, either way round. */
 export function findSize(
   sizes: MachineSize[],
-  machineId: string,
+  kind: MachineKind,
   length: string,
   width: string,
 ): MachineSize | null {
@@ -233,7 +230,7 @@ export function findSize(
   return (
     sizes.find(
       (s) =>
-        s.machine_id === machineId &&
+        s.kind === kind &&
         ((same(dec(s.length), l) && same(dec(s.width), w)) ||
           (same(dec(s.length), w) && same(dec(s.width), l))),
     ) ?? null
@@ -246,19 +243,18 @@ export function findSize(
  */
 export function resolvePiece(
   kind: MachineKind,
-  machineId: string,
   sizes: MachineSize[],
   input: { length_ft: string | null; width_ft: string | null; size_id: string | null },
 ): Piece | null {
   if (kind === 'single_cutting') {
-    const size = sizes.find((s) => s.id === input.size_id && s.machine_id === machineId);
+    const size = sizes.find((s) => s.id === input.size_id && s.kind === kind);
     return size ? { piece_sqft: size.sqft, piece_rft: size.rft, size } : null;
   }
   if (!input.length_ft || !input.width_ft) return null;
   const l = dec(input.length_ft);
   const w = dec(input.width_ft);
   if (kind === 'double_edge') {
-    const size = findSize(sizes, machineId, input.length_ft, input.width_ft);
+    const size = findSize(sizes, kind, input.length_ft, input.width_ft);
     if (size) return { piece_sqft: size.sqft, piece_rft: size.rft, size };
     return { piece_sqft: str(mul(l, w)), piece_rft: str(times(add(l, w), 2)), size: null };
   }

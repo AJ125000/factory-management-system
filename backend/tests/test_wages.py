@@ -129,8 +129,8 @@ def test_size_labels():
 
 
 class _Rate:
-    def __init__(self, machine_id, component, value, effective_from):
-        self.machine_id = machine_id
+    def __init__(self, kind, component, value, effective_from):
+        self.kind = kind
         self.component = component
         self.rate = D(value)
         self.effective_from = effective_from

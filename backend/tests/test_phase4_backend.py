@@ -6,7 +6,6 @@ from pathlib import Path
 import pytest
 
 from fms import tailscale
-from fms.services.machines import BLOCK_CUTTING_ID
 from fms.wages import MissingRateError, Piece, calculate_wage
 
 CASES = json.loads(
@@ -52,14 +51,14 @@ def test_device_chosen_ids_and_safe_retries(api):
     rate_id = str(uuid.uuid4())
     rate = {
         "id": rate_id,
-        "machine_id": BLOCK_CUTTING_ID,
+        "kind": "block_cutting",
         "component": "cutting",
         "rate": "1.5",
         "effective_from": "2026-01-01",
     }
     api.ok(api.c.post("/api/rates", json=rate), 201)
     api.ok(api.c.post("/api/rates", json=rate), 201)  # would be a duplicate-date conflict otherwise
-    assert len(api.ok(api.c.get("/api/rates", params={"machine_id": BLOCK_CUTTING_ID}))) == 1
+    assert len(api.ok(api.c.get("/api/rates", params={"kind": "block_cutting"}))) == 1
 
     entry_id = str(uuid.uuid4())
     entry = {

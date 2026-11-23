@@ -39,7 +39,7 @@ describe('shared wage cases (must match the hub exactly)', () => {
 describe('rateOn', () => {
   const rate = (component: string, value: string, from: string): Rate => ({
     id: from,
-    machine_id: 'm',
+    kind: 'block_cutting',
     component,
     unit: 'sqft',
     rate: value,
@@ -49,10 +49,10 @@ describe('rateOn', () => {
   const rates = [rate('cutting', '2', '2026-07-01'), rate('cutting', '1.5', '2026-01-01')];
 
   it('uses the rate in effect on the date', () => {
-    expect(rateOn(rates, 'm', 'cutting', '2025-12-31')).toBeNull();
-    expect(rateOn(rates, 'm', 'cutting', '2026-06-30')).toBe('1.5');
-    expect(rateOn(rates, 'm', 'cutting', '2026-07-01')).toBe('2');
-    expect(rateOn(rates, 'other', 'cutting', '2026-07-01')).toBeNull();
+    expect(rateOn(rates, 'block_cutting', 'cutting', '2025-12-31')).toBeNull();
+    expect(rateOn(rates, 'block_cutting', 'cutting', '2026-06-30')).toBe('1.5');
+    expect(rateOn(rates, 'block_cutting', 'cutting', '2026-07-01')).toBe('2');
+    expect(rateOn(rates, 'double_edge', 'cutting', '2026-07-01')).toBeNull();
   });
 });
 
@@ -75,37 +75,37 @@ describe('loaderOn', () => {
 });
 
 describe('resolvePiece', () => {
-  const size = (id: string, machine: string, l: string, w: string, rft: string, sqft: string): MachineSize => ({
+  const size = (id: string, kind: MachineKind, l: string, w: string, rft: string, sqft: string): MachineSize => ({
     id,
-    machine_id: machine,
+    kind,
     length: l,
     width: w,
     rft,
     sqft,
   });
-  const sizes = [size('de', 'DE', '2', '1.5', '7', '3'), size('sc', 'SC', '22.5', '22.5', '8', '4')];
+  const sizes = [size('de', 'double_edge', '2', '1.5', '7', '3'), size('sc', 'single_cutting', '22.5', '22.5', '8', '4')];
 
   it('uses the size table on double edge, either way round', () => {
-    const p = resolvePiece('double_edge', 'DE', sizes, { length_ft: '1.50', width_ft: '2', size_id: null });
+    const p = resolvePiece('double_edge', sizes, { length_ft: '1.50', width_ft: '2', size_id: null });
     expect(p).toMatchObject({ piece_rft: '7', piece_sqft: '3' });
     expect(p?.size?.id).toBe('de');
   });
 
   it('uses true perimeter and area for other double edge sizes', () => {
-    const p = resolvePiece('double_edge', 'DE', sizes, { length_ft: '1.25', width_ft: '0.75', size_id: null });
+    const p = resolvePiece('double_edge', sizes, { length_ft: '1.25', width_ft: '0.75', size_id: null });
     expect(p).toEqual({ piece_rft: '4', piece_sqft: '0.9375', size: null });
   });
 
   it('needs a table size on single cutting', () => {
-    expect(resolvePiece('single_cutting', 'SC', sizes, { length_ft: null, width_ft: null, size_id: null })).toBeNull();
-    expect(resolvePiece('single_cutting', 'SC', sizes, { length_ft: null, width_ft: null, size_id: 'de' })).toBeNull();
+    expect(resolvePiece('single_cutting', sizes, { length_ft: null, width_ft: null, size_id: null })).toBeNull();
+    expect(resolvePiece('single_cutting', sizes, { length_ft: null, width_ft: null, size_id: 'de' })).toBeNull();
     expect(
-      resolvePiece('single_cutting', 'SC', sizes, { length_ft: null, width_ft: null, size_id: 'sc' }),
+      resolvePiece('single_cutting', sizes, { length_ft: null, width_ft: null, size_id: 'sc' }),
     ).toMatchObject({ piece_rft: '8', piece_sqft: '4' });
   });
 
   it('uses the plain area on polish and block cutting', () => {
-    expect(resolvePiece('table_polish', 'P', sizes, { length_ft: '2', width_ft: '1.5', size_id: null })).toEqual({
+    expect(resolvePiece('table_polish', sizes, { length_ft: '2', width_ft: '1.5', size_id: null })).toEqual({
       piece_sqft: '3',
       piece_rft: null,
       size: null,

@@ -22,6 +22,7 @@ import type {
   ISODate,
   LoaderAssignment,
   Machine,
+  MachineKind,
   MachineSize,
   ProductionEntry,
   ProductionInput,
@@ -206,6 +207,27 @@ export function useMachines(includeInactive = false) {
   return useQuery({ ...machinesQuery, select: includeInactive ? undefined : activeMachines });
 }
 
+export function useCreateMachine() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: { kind: MachineKind; name_en: string; name_hi?: string | null }) =>
+      api<Machine>('POST', '/machines', { body }),
+    onSuccess: () => invalidate(keys.machines),
+  });
+}
+
+export function fetchMachineDeleteImpact(id: string) {
+  return api<{ machine_id: string; production_entries: number }>('GET', `/machines/${id}/delete-impact`);
+}
+
+export function useDeleteMachine() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (id: string) => api<void>('DELETE', `/machines/${id}`),
+    onSuccess: () => invalidate(keys.machines, keys.loaders),
+  });
+}
+
 export function useUpdateMachine() {
   const invalidate = useInvalidate();
   return useMutation({
@@ -220,7 +242,7 @@ export function useSizes() {
 }
 
 export interface SizeInput {
-  machine_id: string;
+  kind: MachineKind;
   length: string;
   width: string;
   rft: string;
@@ -313,7 +335,7 @@ export function useCurrentRates(on?: ISODate) {
 }
 
 export interface RateInput {
-  machine_id: string;
+  kind: MachineKind;
   component: RateComponent;
   rate: string;
   effective_from: ISODate;

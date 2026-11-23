@@ -105,22 +105,21 @@ class Machine(TimestampMixin, Base):
 
 
 class MachineSize(TimestampMixin, Base):
-    """A standard size and the running ft / sq ft paid per piece ("market standard").
+    """A standard size and the running ft / sq ft paid per piece ("market standard"),
+    shared by every machine of a type.
 
     Lengths are in feet for double edge cutting and in inches for single cutting.
     """
 
     __tablename__ = "machine_sizes"
-    __table_args__ = (UniqueConstraint("machine_id", "length", "width"),)
+    __table_args__ = (UniqueConstraint("kind", "length", "width"),)
 
     id: Mapped[str] = _id_column()
-    machine_id: Mapped[str] = mapped_column(ForeignKey("machines.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(20))
     length: Mapped[Decimal] = mapped_column(DecimalText())
     width: Mapped[Decimal] = mapped_column(DecimalText())
     rft: Mapped[Decimal] = mapped_column(DecimalText())
     sqft: Mapped[Decimal] = mapped_column(DecimalText())
-
-    machine: Mapped[Machine] = relationship(lazy="joined")
 
 
 class LoaderAssignment(TimestampMixin, Base):
@@ -158,26 +157,25 @@ class Worker(TimestampMixin, Base):
 
 
 class Rate(TimestampMixin, Base):
-    """A wage rate for one machine and component, valid from `effective_from` onwards.
+    """A wage rate for one machine type and component, valid from `effective_from` onwards.
+    Every machine of the type is paid at it.
 
     Per sq ft, except cutting on double edge / single cutting: per running foot.
     """
 
     __tablename__ = "rates"
-    __table_args__ = (UniqueConstraint("machine_id", "component", "effective_from"),)
+    __table_args__ = (UniqueConstraint("kind", "component", "effective_from"),)
 
     id: Mapped[str] = _id_column()
-    machine_id: Mapped[str] = mapped_column(ForeignKey("machines.id", ondelete="RESTRICT"))
+    kind: Mapped[str] = mapped_column(String(20))
     component: Mapped[str] = mapped_column(String(20))
     rate: Mapped[Decimal] = mapped_column(DecimalText())
     effective_from: Mapped[date] = mapped_column(Date)
     note: Mapped[str | None] = mapped_column(Text)
 
-    machine: Mapped[Machine] = relationship(lazy="joined")
-
     @property
     def unit(self) -> str:
-        return component_unit(self.machine.kind, self.component)
+        return component_unit(self.kind, self.component)
 
 
 class ProductionEntry(TimestampMixin, Base):

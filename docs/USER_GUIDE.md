@@ -12,7 +12,7 @@
    - *Double edge cutting*: tap a size (2×2, 2×1½, 2×1) or type another size in feet.
    - *Single cutting*: pick the size (inches) from the list.
    - *Table polish*: length × width in feet and the number of **batti**.
-   - *Cutting machine*: length × width in feet and the number of cuts.
+   - *Splitting machine*: length × width in feet and the number of cuts.
 
    Then the number of pieces → **Save entry**. The operator's and the loader's wages are
    shown before you save. After saving, everything except the pieces stays filled in.
@@ -29,6 +29,14 @@
 4. **Download Excel** keeps a copy for your records.
 
 ### Machines & rates
+The page has one card per machine **type** (double edge, table polish, single cutting,
+splitting). Rates and size tables belong to the type: every machine of that type uses
+them. Each machine has its own loader.
+- **Add machine** → a new machine of that type (e.g. *Table polish machine 3*). It uses
+  the type's rates and sizes straight away; set its loader with **Change loader**.
+- **⋯ → Rename / stop using**: rename a machine, or switch off *In use* to retire it.
+  A retired machine can't get new entries, but its past wages stay. A machine that never
+  had an entry can be deleted (**⋯ → Delete**).
 - **Change rate** → choose the operator or loader rate, enter the new rate and the date
   it starts from. Wages before that date never change. Use *Correct* only to fix a
   typing mistake in an old rate.
@@ -37,7 +45,6 @@
 - **Size table** (double edge and single cutting) → **Add size** with its running feet
   and sq ft per piece. A single cutting size must be in the table before it can be used.
   Editing a size never changes entries already saved.
-- **Rename** a machine, or stop using it.
 
 ### Reports
 **Dashboard** shows this month and year at a glance. **Reports** shows production by
@@ -65,7 +72,7 @@ day, month or year; you can **Download Excel** or **Print / Save as PDF**.
    - *डबल एज कटिंग*: साइज़ दबाएँ (2×2, 2×1½, 2×1) या दूसरा साइज़ फुट में लिखें।
    - *सिंगल कटिंग*: सूची से साइज़ (इंच) चुनें।
    - *टेबल पॉलिश*: लंबाई × चौड़ाई फुट में और **बत्ती** की संख्या।
-   - *कटिंग मशीन*: लंबाई × चौड़ाई फुट में और कट।
+   - *स्प्लिटिंग मशीन*: लंबाई × चौड़ाई फुट में और कट।
 
    फिर नग → **एंट्री सहेजें**। सहेजने से पहले ऑपरेटर और लोडर दोनों की मज़दूरी दिख जाती
    है। सहेजने के बाद नग छोड़कर सब भरा रहता है।
@@ -82,6 +89,14 @@ day, month or year; you can **Download Excel** or **Print / Save as PDF**.
 4. **Excel डाउनलोड करें** से अपने रिकॉर्ड के लिए कॉपी रखें।
 
 ### मशीनें और दरें
+पेज पर हर मशीन **प्रकार** (डबल एज, टेबल पॉलिश, सिंगल कटिंग, स्प्लिटिंग) का एक कार्ड है।
+दरें और साइज़ तालिका प्रकार की होती हैं: उस प्रकार की हर मशीन उन्हीं से चलती है। हर मशीन
+का अपना लोडर होता है।
+- **मशीन जोड़ें** → उस प्रकार की नई मशीन (जैसे *टेबल पॉलिश मशीन 3*)। यह तुरंत प्रकार की
+  दरें और साइज़ इस्तेमाल करती है; **लोडर बदलें** से इसका लोडर चुनें।
+- **⋯ → नाम बदलें / बंद करें**: मशीन का नाम बदलें, या *इस्तेमाल में* बंद करके उसे हटाएँ।
+  बंद मशीन पर नई एंट्री नहीं होगी, पर पुरानी मज़दूरी बनी रहेगी। जिस मशीन पर कभी एंट्री नहीं
+  हुई उसे मिटाया जा सकता है (**⋯ → हटाएँ**)।
 - **दर बदलें** → ऑपरेटर या लोडर की दर चुनें, नई दर और वह तारीख डालें जिससे लागू हो।
   उस तारीख से पहले की मज़दूरी कभी नहीं बदलती। *सुधारें* सिर्फ़ पुरानी दर में टाइपिंग की
   गलती ठीक करने के लिए है।
@@ -90,7 +105,6 @@ day, month or year; you can **Download Excel** or **Print / Save as PDF**.
 - **साइज़ तालिका** (डबल एज और सिंगल कटिंग) → **साइज़ जोड़ें**, हर नग के रनिंग फुट और वर्ग
   फुट के साथ। सिंगल कटिंग का साइज़ इस्तेमाल से पहले तालिका में होना चाहिए। साइज़ बदलने
   से पहले से सेव एंट्रियाँ नहीं बदलतीं।
-- मशीन का **नाम बदलें**, या उसका इस्तेमाल बंद करें।
 
 ### रिपोर्ट
 **डैशबोर्ड** पर इस महीने और साल की झलक दिखती है। **रिपोर्ट** में दिन, महीने या साल के

@@ -1,4 +1,9 @@
-"""Machines, their size tables and which loader works at each.
+"""Machines, the size tables of each machine type, and which loader works at each machine.
+
+There can be several machines of each type (e.g. three table polish machines). Every
+machine of a type is paid the same rates and uses the same size table; each machine
+has its own loader. The owner adds machines and retires them; a machine is deleted
+only if nothing was ever entered on it.
 
 A loader assignment applies from its `effective_from` date until the next assignment
 for the same machine, like rates. Replacing or swapping a loader is a new assignment
@@ -13,15 +18,16 @@ from collections.abc import Iterable
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..errors import Conflict, Invalid, NotFound
-from ..models import LoaderAssignment, Machine, MachineSize, Worker
+from ..models import LoaderAssignment, Machine, MachineSize, ProductionEntry, Worker
 from ..schemas import (
     LoaderAssignmentCreate,
     LoaderAssignmentUpdate,
+    MachineCreate,
     MachineSizeCreate,
     MachineSizeUpdate,
     MachineUpdate,
@@ -64,6 +70,89 @@ def known_machine(session: Session, machine_id: str) -> Machine:
     return machine
 
 
+def _unique_code(session: Session, kind: str) -> str:
+    n = 2  # the first machine of each type (from the migration) is just "<kind>"
+    while session.scalar(select(Machine.id).where(Machine.code == f"{kind}_{n}")):
+        n += 1
+    return f"{kind}_{n}"
+
+
+def create_machine(session: Session, data: MachineCreate) -> Machine:
+    kind = MachineKind(data.kind)
+    # New machines go after the others of their type, so each type stays together.
+    order = (
+        session.scalar(select(func.max(Machine.sort_order)).where(Machine.kind == kind.value))
+        or session.scalar(select(func.max(Machine.sort_order)))
+        or 0
+    )
+    machine = Machine(
+        code=_unique_code(session, kind.value),
+        kind=kind.value,
+        name_en=data.name_en,
+        name_hi=data.name_hi or None,
+        sort_order=order,
+    )
+    session.add(machine)
+    session.flush()
+    audit.record(
+        session,
+        "create",
+        MACHINE,
+        machine.id,
+        f"Added machine {machine.name_en}",
+        after=audit.snapshot(machine),
+    )
+    return machine
+
+
+def count_entries(session: Session, machine_id: str) -> int:
+    return (
+        session.scalar(
+            select(func.count())
+            .select_from(ProductionEntry)
+            .where(ProductionEntry.machine_id == machine_id)
+        )
+        or 0
+    )
+
+
+def delete_machine(session: Session, machine_id: str) -> None:
+    """Delete a machine nothing was entered on (e.g. added by mistake).
+
+    A machine with production entries is retired instead (is_active false), so the
+    wages earned on it stay in every report.
+    """
+    machine = get_machine(session, machine_id)
+    entries = count_entries(session, machine.id)
+    if entries:
+        raise Conflict(
+            "This machine has production entries. Stop using it instead, so its "
+            "wages stay in the reports.",
+            reason="machine_has_entries",
+            production_entries=entries,
+        )
+    assignments = list(
+        session.scalars(select(LoaderAssignment).where(LoaderAssignment.machine_id == machine.id))
+    )
+    audit.record(
+        session,
+        "delete",
+        MACHINE,
+        machine.id,
+        f"Deleted machine {machine.name_en}",
+        before={
+            "machine": audit.snapshot(machine),
+            "loader_assignments": [audit.snapshot(a) for a in assignments],
+        },
+    )
+    for a in assignments:
+        audit.tombstone(session, ASSIGNMENT, a.id)
+        session.delete(a)
+    audit.tombstone(session, MACHINE, machine.id)
+    session.delete(machine)
+    session.flush()
+
+
 def update_machine(session: Session, machine_id: str, data: MachineUpdate) -> Machine:
     machine = get_machine(session, machine_id)
     before = audit.snapshot(machine)
@@ -101,13 +190,13 @@ def size_label(length: Decimal, width: Decimal) -> str:
     return f"{_fraction(length)} × {_fraction(width)}"
 
 
-def list_sizes(session: Session, machine_id: str | None = None) -> list[MachineSize]:
-    stmt = select(MachineSize).order_by(MachineSize.machine_id, MachineSize.created_at)
-    if machine_id:
-        stmt = stmt.where(MachineSize.machine_id == machine_id)
+def list_sizes(session: Session, kind: str | None = None) -> list[MachineSize]:
+    stmt = select(MachineSize).order_by(MachineSize.kind, MachineSize.created_at)
+    if kind:
+        stmt = stmt.where(MachineSize.kind == kind)
     # Biggest first within a machine reads naturally on the owner's sheet.
     sizes = list(session.scalars(stmt).unique())
-    sizes.sort(key=lambda s: (s.machine_id, -(s.length * s.width), -s.length))
+    sizes.sort(key=lambda s: (s.kind, -(s.length * s.width), -s.length))
     return sizes
 
 
@@ -118,12 +207,10 @@ def get_size(session: Session, size_id: str) -> MachineSize:
     return size
 
 
-def find_size(
-    session: Session, machine_id: str, length: Decimal, width: Decimal
-) -> MachineSize | None:
+def find_size(session: Session, kind: str, length: Decimal, width: Decimal) -> MachineSize | None:
     """The table size matching these measurements, either way round."""
     wanted = sorted((length, width))
-    for size in list_sizes(session, machine_id):
+    for size in list_sizes(session, kind):
         if sorted((size.length, size.width)) == wanted:
             return size
     return None
@@ -143,19 +230,17 @@ def _flush_size(session: Session) -> None:
 def create_size(session: Session, data: MachineSizeCreate) -> MachineSize:
     if replay := existing_replay(session, MachineSize, data.id, SIZE):
         return replay
-    machine = known_machine(session, data.machine_id)
-    if not uses_size_table(machine.kind):
-        raise Invalid(
-            "This machine has no size table", reason="no_size_table", machine_id=machine.id
-        )
-    if find_size(session, machine.id, data.length, data.width):
+    kind = MachineKind(data.kind)
+    if not uses_size_table(kind):
+        raise Invalid("This machine type has no size table", reason="no_size_table", kind=kind)
+    if find_size(session, kind.value, data.length, data.width):
         raise Conflict(
             "This size is already in the table. Edit that size instead.",
             reason="duplicate_size",
         )
     size = MachineSize(
         **({"id": str(data.id)} if data.id else {}),
-        machine_id=machine.id,
+        kind=kind.value,
         length=data.length,
         width=data.width,
         rft=data.rft,
@@ -168,7 +253,7 @@ def create_size(session: Session, data: MachineSizeCreate) -> MachineSize:
         "create",
         SIZE,
         size.id,
-        f"Added size {size_label(size.length, size.width)} to {machine.name_en}: "
+        f"Added size {size_label(size.length, size.width)} to {kind}: "
         f"{size.rft} running ft, {size.sqft} sq ft",
         after=audit.snapshot(size),
     )
@@ -182,7 +267,7 @@ def update_size(session: Session, size_id: str, data: MachineSizeUpdate) -> Mach
     apply_changes(
         size, data.model_dump(exclude_unset=True), required=("length", "width", "rft", "sqft")
     )
-    other = find_size(session, size.machine_id, size.length, size.width)
+    other = find_size(session, size.kind, size.length, size.width)
     if other is not None and other.id != size.id:
         raise Conflict(
             "This size is already in the table. Edit that size instead.",
@@ -353,7 +438,3 @@ def delete_assignment(session: Session, assignment_id: str) -> None:
     audit.tombstone(session, ASSIGNMENT, assignment.id)
     session.delete(assignment)
     session.flush()
-
-
-def is_kind(machine: Machine, kind: MachineKind) -> bool:
-    return MachineKind(machine.kind) is kind

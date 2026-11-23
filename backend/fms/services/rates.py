@@ -1,8 +1,9 @@
 """Wage rates with effective dates.
 
 A rate applies from its `effective_from` date until the next rate for the same
-machine and component. A production entry is always paid at the rate that was
-in effect on its own date, so raising rates never changes wages already earned.
+machine type and component, and pays every machine of that type. A production entry
+is always paid at the rate that was in effect on its own date, so raising rates never
+changes wages already earned.
 """
 
 from __future__ import annotations
@@ -20,10 +21,9 @@ from sqlalchemy.orm import Session
 from ..errors import Conflict, Invalid, NotFound
 from ..models import Rate
 from ..schemas import RateCreate, RateUpdate
-from ..wages import Piece, Role, allowed_components, bases
+from ..wages import MachineKind, Piece, Role, allowed_components, bases
 from . import audit
 from ._common import apply_changes, existing_replay
-from .machines import known_machine
 
 ENTITY = "rate"
 
@@ -34,7 +34,7 @@ class RateBook:
     def __init__(self, rates: Iterable[Rate]) -> None:
         grouped: dict[tuple[str, str], list[tuple[date, Decimal]]] = defaultdict(list)
         for r in rates:
-            grouped[(r.machine_id, r.component)].append((r.effective_from, r.rate))
+            grouped[(r.kind, r.component)].append((r.effective_from, r.rate))
         self._dates: dict[tuple[str, str], list[date]] = {}
         self._values: dict[tuple[str, str], list[Decimal]] = {}
         for key, items in grouped.items():
@@ -46,35 +46,31 @@ class RateBook:
     def load(cls, session: Session) -> RateBook:
         return cls(session.scalars(select(Rate)).unique())
 
-    def lookup_with_date(
-        self, machine_id: str, component: str, on: date
-    ) -> tuple[Decimal, date] | None:
-        key = (machine_id, component)
+    def lookup_with_date(self, kind: str, component: str, on: date) -> tuple[Decimal, date] | None:
+        key = (kind, component)
         dates = self._dates.get(key)
         if not dates:
             return None
         i = bisect_right(dates, on) - 1
         return (self._values[key][i], dates[i]) if i >= 0 else None
 
-    def lookup(self, machine_id: str, component: str, on: date) -> Decimal | None:
-        found = self.lookup_with_date(machine_id, component, on)
+    def lookup(self, kind: str, component: str, on: date) -> Decimal | None:
+        found = self.lookup_with_date(kind, component, on)
         return found[0] if found else None
 
-    def components(self, machine_id: str) -> set[str]:
-        """Every component this machine has ever had a rate for."""
-        return {c for (m, c) in self._dates if m == machine_id}
+    def components(self, kind: str) -> set[str]:
+        """Every component this machine type has ever had a rate for."""
+        return {c for (k, c) in self._dates if k == kind}
 
-    def rates_for(
-        self, machine_id: str, kind: str, role: Role, piece: Piece, on: date
-    ) -> dict[str, Decimal | None]:
+    def rates_for(self, kind: str, role: Role, piece: Piece, on: date) -> dict[str, Decimal | None]:
         """The rates on a date for everything this entry pays."""
-        return {c: self.lookup(machine_id, c, on) for c in bases(kind, role, piece)}
+        return {c: self.lookup(kind, c, on) for c in bases(kind, role, piece)}
 
 
-def list_rates(session: Session, machine_id: str | None = None) -> list[Rate]:
-    stmt = select(Rate).order_by(Rate.machine_id, Rate.component, Rate.effective_from.desc())
-    if machine_id:
-        stmt = stmt.where(Rate.machine_id == machine_id)
+def list_rates(session: Session, kind: str | None = None) -> list[Rate]:
+    stmt = select(Rate).order_by(Rate.kind, Rate.component, Rate.effective_from.desc())
+    if kind:
+        stmt = stmt.where(Rate.kind == kind)
     return list(session.scalars(stmt).unique())
 
 
@@ -91,7 +87,8 @@ def _flush_unique(session: Session) -> None:
             session.flush()
     except IntegrityError as exc:
         raise Conflict(
-            "A rate for this machine and work already starts on that date. Edit that rate instead.",
+            "A rate for this machine type and work already starts on that date. "
+            "Edit that rate instead.",
             reason="duplicate_effective_date",
         ) from exc
 
@@ -99,17 +96,17 @@ def _flush_unique(session: Session) -> None:
 def create_rate(session: Session, data: RateCreate) -> Rate:
     if replay := existing_replay(session, Rate, data.id, ENTITY):
         return replay
-    machine = known_machine(session, data.machine_id)
-    allowed = allowed_components(machine.kind)
+    kind = MachineKind(data.kind)
+    allowed = allowed_components(kind)
     if data.component not in allowed:
         raise Invalid(
-            f"{machine.name_en} has no {data.component} rate",
+            f"A {kind} machine has no {data.component} rate",
             reason="component_not_allowed",
             allowed_components=list(allowed),
         )
     rate = Rate(
         **({"id": str(data.id)} if data.id else {}),
-        machine_id=machine.id,
+        kind=kind.value,
         component=data.component,
         rate=data.rate,
         effective_from=data.effective_from,
@@ -122,7 +119,7 @@ def create_rate(session: Session, data: RateCreate) -> Rate:
         "create",
         ENTITY,
         rate.id,
-        f"Set {machine.name_en} {rate.component} rate to {rate.rate} "
+        f"Set {rate.kind} {rate.component} rate to {rate.rate} "
         f"from {rate.effective_from.isoformat()}",
         after=audit.snapshot(rate),
     )

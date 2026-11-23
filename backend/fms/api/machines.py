@@ -6,6 +6,8 @@ from ..schemas import (
     LoaderAssignmentCreate,
     LoaderAssignmentOut,
     LoaderAssignmentUpdate,
+    MachineCreate,
+    MachineDeleteImpact,
     MachineOut,
     MachineSizeCreate,
     MachineSizeOut,
@@ -22,6 +24,28 @@ def list_machines(session: Session = Depends(get_session)):
     return svc.list_machines(session)
 
 
+@router.post("/machines", response_model=MachineOut, status_code=status.HTTP_201_CREATED)
+def create_machine(data: MachineCreate, session: Session = Depends(get_session)):
+    machine = svc.create_machine(session, data)
+    session.commit()
+    return machine
+
+
+@router.get("/machines/{machine_id}/delete-impact", response_model=MachineDeleteImpact)
+def delete_impact(machine_id: str, session: Session = Depends(get_session)):
+    svc.get_machine(session, machine_id)
+    return MachineDeleteImpact(
+        machine_id=machine_id, production_entries=svc.count_entries(session, machine_id)
+    )
+
+
+@router.delete("/machines/{machine_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_machine(machine_id: str, session: Session = Depends(get_session)):
+    """Only for a machine with no entries; otherwise stop using it (is_active false)."""
+    svc.delete_machine(session, machine_id)
+    session.commit()
+
+
 @router.patch("/machines/{machine_id}", response_model=MachineOut)
 def update_machine(machine_id: str, data: MachineUpdate, session: Session = Depends(get_session)):
     machine = svc.update_machine(session, machine_id, data)
@@ -31,8 +55,8 @@ def update_machine(machine_id: str, data: MachineUpdate, session: Session = Depe
 
 # ------------------------------------------------------------------ size tables
 @router.get("/machine-sizes", response_model=list[MachineSizeOut])
-def list_sizes(machine_id: str | None = None, session: Session = Depends(get_session)):
-    return svc.list_sizes(session, machine_id)
+def list_sizes(kind: str | None = None, session: Session = Depends(get_session)):
+    return svc.list_sizes(session, kind)
 
 
 @router.post("/machine-sizes", response_model=MachineSizeOut, status_code=status.HTTP_201_CREATED)

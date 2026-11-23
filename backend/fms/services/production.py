@@ -69,7 +69,7 @@ def resolve_piece(
 
     def table_size(sid: str) -> MachineSize:
         size = session.get(MachineSize, sid)
-        if size is None or size.machine_id != machine.id:
+        if size is None or size.kind != machine.kind:
             raise Invalid("Unknown size for this machine", reason="unknown_size", size_id=sid)
         return size
 
@@ -99,7 +99,7 @@ def resolve_piece(
         size = table_size(size_id) if size_id else None
         if size is None:
             length, width = need_dimensions()
-            size = find_size(session, machine.id, length, width)
+            size = find_size(session, machine.kind, length, width)
         if size is not None:
             out |= {
                 "length_ft": size.length,
@@ -151,7 +151,7 @@ def _calc(
     book: RateBook, machine: Machine, role: Role, piece: Piece, on: date
 ) -> tuple[WageResult | None, list[str]]:
     try:
-        rates = book.rates_for(machine.id, machine.kind, role, piece, on)
+        rates = book.rates_for(machine.kind, role, piece, on)
         return calculate_wage(machine.kind, role, piece, rates), []
     except MissingRateError as exc:
         return None, exc.components
