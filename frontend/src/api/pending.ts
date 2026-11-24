@@ -2,9 +2,17 @@
 
 import { useMemo } from 'react';
 
+import { pendingProduction, type PendingProduction } from '../lib/localEntries';
 import { useOutbox } from '../lib/outbox';
-import { useWorkers, useWorkerTypes } from './hooks';
-import type { Worker } from './types';
+import {
+  useLoaderAssignments,
+  useMachines,
+  useRates,
+  useSizes,
+  useWorkers,
+  useWorkerTypes,
+} from './hooks';
+import type { ProductionEntry, Worker } from './types';
 
 /**
  * Workers from the hub plus workers added on this device that haven't been sent yet,
@@ -53,4 +61,32 @@ export function useWorkersWithPending(includeArchived = false) {
   );
 
   return { ...query, data, pendingIds };
+}
+
+/**
+ * Production changes waiting on this device, worked out with the same formulas as the
+ * laptop, so a phone shows its own entries (and their pay) before they're sent.
+ */
+export function usePendingProduction(server: ProductionEntry[] = []): PendingProduction {
+  const outbox = useOutbox();
+  const workers = useWorkersWithPending(true).data;
+  const machines = useMachines(true).data;
+  const sizes = useSizes().data;
+  const rates = useRates().data;
+  const assignments = useLoaderAssignments().data;
+  return useMemo(
+    () =>
+      pendingProduction(
+        outbox,
+        workers ?? [],
+        {
+          machines: machines ?? [],
+          sizes: sizes ?? [],
+          rates: rates ?? [],
+          assignments: assignments ?? [],
+        },
+        server,
+      ),
+    [outbox, workers, machines, sizes, rates, assignments, server],
+  );
 }

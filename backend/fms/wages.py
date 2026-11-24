@@ -17,6 +17,9 @@ depends on the kind of machine (from the owner's rate sheet, Nov 2026):
 * Table polish (the rate depends on the number of batti):
       operator  polish_N  = piece_sqft x pieces x rate/sq ft for N batti
       loader    unloading = piece_sqft x pieces x rate/sq ft
+* Block cutter (attendance, added Nov 2026): a fixed amount per shift worked, day or
+  night. One entry is one shift of one worker; there is no loader.
+      worker    shift     = 1 x rate/shift
 
 piece_sqft and piece_rft come from the machine's size table where it has one (the
 "market standard" figures), otherwise from the true area and perimeter.
@@ -41,17 +44,27 @@ class MachineKind(StrEnum):
     DOUBLE_EDGE = "double_edge"
     TABLE_POLISH = "table_polish"
     SINGLE_CUTTING = "single_cutting"
+    BLOCK_CUTTER = "block_cutter"  # paid per shift (not the splitting machine, block_cutting)
+
+
+class Shift(StrEnum):
+    DAY = "day"
+    NIGHT = "night"
 
 
 class Unit(StrEnum):
     SQFT = "sqft"
     RFT = "rft"
+    SHIFT = "shift"
 
 
 # Rate components. Table polish has one per batti count: "polish_1", "polish_4", ...
 CUTTING = "cutting"
 LOADING = "loading"
 UNLOADING = "unloading"
+SHIFT_PAY = "shift"
+OPERATOR_CUTTING = CUTTING  # the splitting machine's "machine man production"
+LOADER_UNLOADING = UNLOADING
 MAX_BATTI = 9
 _POLISH = re.compile(r"^polish_([1-9])$")
 
@@ -72,6 +85,8 @@ def allowed_components(kind: MachineKind | str) -> tuple[str, ...]:
         return (CUTTING, LOADING, UNLOADING)
     if kind is MachineKind.TABLE_POLISH:
         return (*(polish_component(n) for n in range(1, MAX_BATTI + 1)), UNLOADING)
+    if kind is MachineKind.BLOCK_CUTTER:
+        return (SHIFT_PAY,)
     return (CUTTING, UNLOADING)
 
 
@@ -80,7 +95,9 @@ def is_allowed_component(kind: MachineKind | str, component: str) -> bool:
 
 
 def component_unit(kind: MachineKind | str, component: str) -> Unit:
-    """Whether a rate is per square foot or per running foot."""
+    """Whether a rate is per square foot, per running foot or per shift."""
+    if component == SHIFT_PAY:
+        return Unit.SHIFT
     if component == CUTTING and MachineKind(kind) in (
         MachineKind.DOUBLE_EDGE,
         MachineKind.SINGLE_CUTTING,
@@ -99,6 +116,15 @@ ZERO = Decimal("0.00")
 
 def to_paise(amount: Decimal) -> Decimal:
     return amount.quantize(PAISA, rounding=ROUND_HALF_UP)
+
+
+def is_shift_paid(kind: MachineKind | str) -> bool:
+    """Paid a fixed amount per shift (attendance), with no sizes and no loader."""
+    return MachineKind(kind) is MachineKind.BLOCK_CUTTER
+
+
+def has_loader(kind: MachineKind | str) -> bool:
+    return not is_shift_paid(kind)
 
 
 def perimeter(length: Decimal, width: Decimal) -> Decimal:
@@ -156,6 +182,9 @@ def bases(kind: MachineKind | str, role: Role | str, piece: Piece) -> dict[str, 
     """The sq ft / running ft each rate component is multiplied by."""
     kind, role = MachineKind(kind), Role(role)
     qty = piece.quantity
+    if kind is MachineKind.BLOCK_CUTTER:
+        # Whoever is on the entry is paid for the shift, whatever their usual work.
+        return {SHIFT_PAY: Decimal(qty)}
     if kind is MachineKind.BLOCK_CUTTING:
         if role is Role.OPERATOR:
             return {CUTTING: 2 * piece.sqft * piece.cuts * qty}

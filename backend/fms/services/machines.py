@@ -32,7 +32,7 @@ from ..schemas import (
     MachineSizeUpdate,
     MachineUpdate,
 )
-from ..wages import MachineKind, Role, uses_size_table
+from ..wages import MachineKind, Role, has_loader, uses_size_table
 from . import audit
 from ._common import apply_changes, existing_replay
 
@@ -41,6 +41,7 @@ BLOCK_CUTTING_ID = "00000000-0000-4000-8000-000000000101"
 DOUBLE_EDGE_ID = "00000000-0000-4000-8000-000000000102"
 TABLE_POLISH_ID = "00000000-0000-4000-8000-000000000103"
 SINGLE_CUTTING_ID = "00000000-0000-4000-8000-000000000104"
+BLOCK_CUTTER_ID = "00000000-0000-4000-8000-000000000105"  # added by migration 0005
 
 MACHINE = "machine"
 SIZE = "machine_size"
@@ -378,6 +379,12 @@ def create_assignment(session: Session, data: LoaderAssignmentCreate) -> LoaderA
     if replay := existing_replay(session, LoaderAssignment, data.id, ASSIGNMENT):
         return replay
     machine = known_machine(session, data.machine_id)
+    if not has_loader(machine.kind):
+        raise Invalid(
+            "This machine is paid per shift and has no loader",
+            reason="machine_has_no_loader",
+            machine_id=machine.id,
+        )
     if data.worker_id:
         usable_loader(session, data.worker_id)
     assignment = LoaderAssignment(

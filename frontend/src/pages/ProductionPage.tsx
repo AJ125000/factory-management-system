@@ -39,7 +39,7 @@ import {
   useSettings,
   useSizes,
 } from '../api/hooks';
-import { useWorkersWithPending } from '../api/pending';
+import { usePendingProduction, useWorkersWithPending } from '../api/pending';
 import type {
   LoaderAssignment,
   Machine,
@@ -48,6 +48,7 @@ import type {
   ProductionInput,
   Rate,
   RateComponent,
+  Shift,
   WagePreview,
   Worker,
 } from '../api/types';
@@ -68,10 +69,12 @@ import { defaultPreset } from '../lib/periods';
 import {
   battiOf,
   calculateWage,
+  isShiftPaid,
   loaderOn,
   ratesFor,
   resolvePiece,
   sizeLabel,
+  splittingSqft,
   totalOf,
 } from '../lib/wages';
 import { useComponentLabel } from './RatesPage';
@@ -97,11 +100,12 @@ function rememberMachine(id: string) {
 
 /** How a change is described in the "waiting to sync" list. */
 function entryLabel(
-  e: Pick<ProductionInput, 'entry_date' | 'quantity'> & { size: string },
+  e: Pick<ProductionInput, 'entry_date' | 'quantity'> & { size: string; shift?: Shift | null },
   w: Worker | undefined,
   m: Machine | undefined,
 ): string {
-  return `${w?.name_en ?? '?'} · ${formatDate(e.entry_date, 'short')} · ${m?.name_en ?? ''} · ${e.size} × ${e.quantity}`;
+  const what = e.shift ? `${e.shift} shift` : `${e.size} × ${e.quantity}`;
+  return `${w?.name_en ?? '?'} · ${formatDate(e.entry_date, 'short')} · ${m?.name_en ?? ''} · ${what}`;
 }
 
 /** The wage preview worked out on this device (same formulas as the hub, tested to match). */
@@ -112,16 +116,39 @@ function localPreview(
   rates: Rate[],
   assignments: LoaderAssignment[],
 ): WagePreview | null {
+  const date = input.entry_date;
+  if (isShiftPaid(machine.kind)) {
+    const p = { piece_sqft: '0', piece_rft: null, cuts: 0, quantity: 1, batti: null };
+    const op = calculateWage(machine.kind, 'operator', p, ratesFor(rates, machine.kind, 'operator', date));
+    return {
+      area_sqft: '0',
+      rft_total: null,
+      cutting_sqft: null,
+      unloading_sqft: null,
+      piece_sqft: '0',
+      piece_rft: null,
+      wage: op.total,
+      wage_lines: [],
+      missing_rates: op.missing,
+      loader_worker_id: null,
+      loader_wage: null,
+      loader_wage_lines: [],
+      loader_missing_rates: [],
+      no_loader: false,
+    };
+  }
   const piece = resolvePiece(machine.kind, sizes, input);
   if (!piece) return null;
   const p = { ...piece, cuts: input.cuts, quantity: input.quantity, batti: input.batti };
-  const date = input.entry_date;
   const op = calculateWage(machine.kind, 'operator', p, ratesFor(rates, machine.kind, 'operator', date));
   const ld = calculateWage(machine.kind, 'loader', p, ratesFor(rates, machine.kind, 'loader', date));
   const loader = input.loader_id ?? loaderOn(assignments, machine.id, date);
+  const split = splittingSqft(machine.kind, p);
   return {
     area_sqft: totalOf(piece.piece_sqft, input.quantity),
     rft_total: piece.piece_rft === null ? null : totalOf(piece.piece_rft, input.quantity),
+    cutting_sqft: split?.cutting ?? null,
+    unloading_sqft: split?.unloading ?? null,
     piece_sqft: piece.piece_sqft,
     piece_rft: piece.piece_rft,
     wage: op.total,
@@ -136,6 +163,7 @@ function localPreview(
 }
 
 const PAGE_SIZE = 50;
+const NO_ENTRIES: ProductionEntry[] = [];
 
 export default function ProductionPage() {
   const { t, i18n } = useTranslation();
@@ -193,8 +221,28 @@ export default function ProductionPage() {
     });
   };
 
-  const total = entries.data?.total ?? 0;
-  const operators = (allWorkers.data ?? []).filter((w) => !w.is_archived && w.worker_type.role === 'operator');
+  // Entries made on this device that haven't reached the laptop yet are shown too.
+  const serverItems = entries.data?.items ?? NO_ENTRIES;
+  const pending = usePendingProduction(serverItems);
+  const matches = (e: ProductionEntry) =>
+    e.entry_date >= activePeriod.start &&
+    e.entry_date <= activePeriod.end &&
+    (!workerFilter || e.worker_id === workerFilter || e.loader_worker_id === workerFilter) &&
+    (!machineFilter || e.machine_id === machineFilter);
+  const notSent =
+    page === 1
+      ? pending.created
+          .filter((e) => matches(e) && !serverItems.some((x) => x.id === e.id))
+          .sort((a, b) => b.entry_date.localeCompare(a.entry_date))
+      : [];
+  const removed = serverItems.filter((e) => pending.deleted.has(e.id)).length;
+  const rows: (ProductionEntry & { pending?: boolean })[] = [
+    ...notSent,
+    ...serverItems.filter((e) => !pending.deleted.has(e.id)).map((e) => pending.edited.get(e.id) ?? e),
+  ];
+  const total = (entries.data?.total ?? 0) + notSent.length - removed;
+  const active = (allWorkers.data ?? []).filter((w) => !w.is_archived);
+  const operators = active.filter((w) => w.worker_type.role === 'operator');
 
   return (
     <>
@@ -207,7 +255,7 @@ export default function ProductionPage() {
         <Text size="sm" c="dimmed" mb="sm">
           {t('production.onlyOperators')}
         </Text>
-        <EntryForm workers={operators} />
+        <EntryForm workers={operators} shiftWorkers={active} />
       </Card>
 
       <PendingForEntity entity="production" />
@@ -248,24 +296,24 @@ export default function ProductionPage() {
               }}
             />
           </Group>
-          {entries.data && (
+          {(entries.data || notSent.length > 0) && (
             <Text size="sm" c="dimmed">
               {t('production.count', { count: total })}
             </Text>
           )}
         </Group>
 
-        {!entries.data && !reachable ? (
+        {!entries.data && !reachable && notSent.length === 0 ? (
           // The laptop is away and this list was never saved on this device.
           <Text c="dimmed" ta="center" py="xl">
             {t('sync.notOnDevice')}
           </Text>
-        ) : entries.isSuccess && total === 0 ? (
+        ) : (entries.isSuccess || !reachable) && total === 0 ? (
           <Text c="dimmed" ta="center" py="xl">
             {t('production.noEntries')}
           </Text>
         ) : (
-          <Table.ScrollContainer minWidth={900}>
+          <Table.ScrollContainer minWidth={1100}>
             <Table highlightOnHover striped>
               <Table.Thead>
                 <Table.Tr>
@@ -277,20 +325,29 @@ export default function ProductionPage() {
                   <Table.Th className="num">
                     {t('production.area')} ({t('units.sqft')})
                   </Table.Th>
+                  <Table.Th className="num">{t('production.cuttingSqft')}</Table.Th>
+                  <Table.Th className="num">{t('production.unloadingSqft')}</Table.Th>
                   <Table.Th className="num">{t('production.wage')}</Table.Th>
                   <Table.Th>{t('production.loader')}</Table.Th>
                   <Table.Th w={80} />
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {(entries.data?.items ?? []).map((e) => {
+                {rows.map((e) => {
                   const w = byId.get(e.worker_id);
                   const m = machineById.get(e.machine_id);
                   const loader = e.loader_worker_id ? byId.get(e.loader_worker_id) : undefined;
                   const details = entryDetails(e, t);
                   return (
                     <Table.Tr key={e.id}>
-                      <Table.Td style={{ whiteSpace: 'nowrap' }}>{formatDate(e.entry_date)}</Table.Td>
+                      <Table.Td style={{ whiteSpace: 'nowrap' }}>
+                        {formatDate(e.entry_date)}
+                        {e.pending && (
+                          <Badge display="block" mt={2} size="xs" color="gray" variant="light">
+                            {t('sync.pending')}
+                          </Badge>
+                        )}
+                      </Table.Td>
                       <Table.Td>{w && <WorkerName nameEn={w.name_en} nameHi={w.name_hi} />}</Table.Td>
                       <Table.Td>
                         <Text size="sm">{m ? localName(m.name_en, m.name_hi, i18n.language) : ''}</Text>
@@ -305,8 +362,14 @@ export default function ProductionPage() {
                           </Text>
                         )}
                       </Table.Td>
-                      <Table.Td className="num">{e.quantity}</Table.Td>
-                      <Table.Td className="num">{formatNumber(e.area_sqft)}</Table.Td>
+                      <Table.Td className="num">{e.shift ? '—' : e.quantity}</Table.Td>
+                      <Table.Td className="num">{e.shift ? '—' : formatNumber(e.area_sqft)}</Table.Td>
+                      <Table.Td className="num">
+                        {e.cutting_sqft !== null ? formatNumber(e.cutting_sqft) : '—'}
+                      </Table.Td>
+                      <Table.Td className="num">
+                        {e.unloading_sqft !== null ? formatNumber(e.unloading_sqft) : '—'}
+                      </Table.Td>
                       <Table.Td className="num">
                         {e.wage !== null ? (
                           <Text fw={600} size="sm">
@@ -319,7 +382,7 @@ export default function ProductionPage() {
                         )}
                       </Table.Td>
                       <Table.Td>
-                        {e.paid_as === 'loader' ? null : e.no_loader ? (
+                        {e.paid_as === 'loader' || e.shift ? null : e.no_loader ? (
                           <Badge color="orange" variant="light">
                             {t('machines.noLoader')}
                           </Badge>
@@ -378,6 +441,9 @@ export default function ProductionPage() {
             workers={(allWorkers.data ?? []).filter(
               (w) => (!w.is_archived && w.worker_type.role === 'operator') || w.id === editing.worker_id,
             )}
+            shiftWorkers={(allWorkers.data ?? []).filter(
+              (w) => !w.is_archived || w.id === editing.worker_id,
+            )}
             onDone={() => setEditing(null)}
           />
         )}
@@ -395,6 +461,7 @@ interface FormState {
   size_id: string | null;
   cuts: number | string;
   batti: number | null;
+  shift: Shift | null;
   quantity: number | string;
   fill_in: boolean;
   loader_id: string | null;
@@ -403,7 +470,25 @@ interface FormState {
 
 function toInput(v: FormState, machine: Machine | undefined): ProductionInput | null {
   const n = (x: number | string) => (x === '' ? NaN : Number(x));
-  if (!v.worker_id || !v.entry_date || !machine || !(n(v.quantity) >= 1)) return null;
+  if (!v.worker_id || !v.entry_date || !machine) return null;
+  if (isShiftPaid(machine.kind)) {
+    if (!v.shift) return null;
+    return {
+      worker_id: v.worker_id,
+      machine_id: machine.id,
+      entry_date: v.entry_date,
+      length_ft: null,
+      width_ft: null,
+      size_id: null,
+      cuts: 0,
+      batti: null,
+      shift: v.shift,
+      quantity: 1,
+      loader_id: null,
+      notes: v.notes.trim() || null,
+    };
+  }
+  if (!(n(v.quantity) >= 1)) return null;
   if (v.fill_in && !v.loader_id) return null;
   const base = {
     worker_id: v.worker_id,
@@ -414,6 +499,7 @@ function toInput(v: FormState, machine: Machine | undefined): ProductionInput | 
     size_id: null as string | null,
     cuts: 0,
     batti: null as number | null,
+    shift: null,
     quantity: Math.trunc(n(v.quantity)),
     loader_id: v.fill_in ? v.loader_id : null,
     notes: v.notes.trim() || null,
@@ -431,11 +517,14 @@ function toInput(v: FormState, machine: Machine | undefined): ProductionInput | 
 }
 
 function EntryForm({
-  workers,
+  workers: operators,
+  shiftWorkers,
   entry,
   onDone,
 }: {
   workers: Worker[];
+  /** Anyone can work a block cutter shift, loaders included. */
+  shiftWorkers: Worker[];
   entry?: ProductionEntry;
   onDone?: () => void;
 }) {
@@ -460,7 +549,8 @@ function EntryForm({
     size_id: entry?.size_id ?? null,
     cuts: entry ? entry.cuts : '',
     batti: entry?.batti ?? null,
-    quantity: entry?.quantity ?? '',
+    shift: entry?.shift ?? null,
+    quantity: entry?.shift ? '' : (entry?.quantity ?? ''),
     fill_in: Boolean(entry?.loader_id),
     loader_id: entry?.loader_id ?? null,
     notes: entry?.notes ?? '',
@@ -469,6 +559,8 @@ function EntryForm({
     setValues((v) => ({ ...v, [key]: value }));
 
   const machine = machines.find((m) => m.id === values.machine_id);
+  const shiftPaid = machine ? isShiftPaid(machine.kind) : false;
+  const workers = shiftPaid ? shiftWorkers : operators;
   const machineSizes = sizes.filter((s) => s.kind === machine?.kind);
   const name = (id: string | null) => {
     const w = allWorkers.find((x) => x.id === id);
@@ -514,7 +606,7 @@ function EntryForm({
   const submit = () => {
     if (!input) return;
     const w = workers.find((x) => x.id === input.worker_id);
-    const size = machine ? entrySize({ ...input, size_label: piece?.size ? sizeLabel(piece.size.length, piece.size.width) : null }, t) : '';
+    const size = machine && !shiftPaid ? entrySize({ ...input, size_label: piece?.size ? sizeLabel(piece.size.length, piece.size.width) : null }, t) : '';
     rememberMachine(input.machine_id);
     save.mutate(
       { id: entry?.id, body: input, label: entryLabel({ ...input, size }, w, machine) },
@@ -528,7 +620,10 @@ function EntryForm({
             }),
           );
           if (onDone) onDone();
-          else {
+          else if (shiftPaid) {
+            // Next worker on the same shift.
+            setValues((v) => ({ ...v, worker_id: null, notes: '' }));
+          } else {
             // Keep worker, machine, date and size for fast repeat entries.
             setValues((v) => ({ ...v, quantity: '', notes: '', fill_in: false, loader_id: null }));
             quantityRef.current?.focus();
@@ -600,8 +695,17 @@ function EntryForm({
             onChange={(v) =>
               setValues((s) => {
                 // Machines of the same type share sizes and batti rates: keep them.
-                const sameKind = machines.find((m) => m.id === v)?.kind === machine?.kind;
-                return { ...s, machine_id: v, size_id: sameKind ? s.size_id : null };
+                const next = machines.find((m) => m.id === v);
+                const sameKind = next?.kind === machine?.kind;
+                // Only operators work piece-rate machines; anyone can work a shift.
+                const allowed = next && isShiftPaid(next.kind) ? shiftWorkers : operators;
+                const keepWorker = allowed.some((w) => w.id === s.worker_id);
+                return {
+                  ...s,
+                  machine_id: v,
+                  size_id: sameKind ? s.size_id : null,
+                  worker_id: keepWorker ? s.worker_id : null,
+                };
               })
             }
           />
@@ -646,7 +750,27 @@ function EntryForm({
           </Stack>
         )}
 
-        {machine && (
+        {shiftPaid && (
+          <Stack gap={4}>
+            <Text size="sm" fw={500}>
+              {t('production.shift')} <Text span c="red">*</Text>
+            </Text>
+            <SegmentedControl
+              value={values.shift ?? ''}
+              onChange={(v) => set('shift', v as Shift)}
+              data={[
+                { value: 'day', label: t('shifts.day') },
+                { value: 'night', label: t('shifts.night') },
+              ]}
+              style={{ alignSelf: 'flex-start' }}
+            />
+            <Text size="xs" c="dimmed">
+              {t('production.shiftHelp')}
+            </Text>
+          </Stack>
+        )}
+
+        {machine && !shiftPaid && (
           <SimpleGrid cols={{ base: 2, sm: 4 }}>
             {machine.kind === 'single_cutting' ? (
               <Select
@@ -686,7 +810,7 @@ function EntryForm({
           </Text>
         )}
 
-        {machine && (
+        {machine && !shiftPaid && (
           <Group gap="md" align="flex-end" wrap="wrap">
             {values.fill_in ? (
               <Select
@@ -729,13 +853,19 @@ function EntryForm({
           <div>
             {shown && (
               <Group gap="lg" align="baseline" wrap="wrap">
-                <Text size="sm" c="dimmed">
-                  {t('production.previewArea', { area: formatNumber(shown.area_sqft) })}
-                  {shown.rft_total && ` · ${t('production.previewRft', { rft: formatNumber(shown.rft_total) })}`}
-                </Text>
+                {!shiftPaid && (
+                  <Text size="sm" c="dimmed">
+                    {t('production.previewArea', { area: formatNumber(shown.area_sqft) })}
+                    {shown.rft_total && ` · ${t('production.previewRft', { rft: formatNumber(shown.rft_total) })}`}
+                    {shown.cutting_sqft &&
+                      ` · ${t('production.cuttingSqft')}: ${formatNumber(shown.cutting_sqft)}` +
+                        ` · ${t('production.unloadingSqft')}: ${formatNumber(shown.unloading_sqft)}`}
+                  </Text>
+                )}
                 {shown.wage !== null && (
                   <Text size="lg" fw={700}>
-                    {t('production.operatorWage')}: {formatMoney(shown.wage)}
+                    {t(shiftPaid ? 'production.shiftWage' : 'production.operatorWage')}:{' '}
+                    {formatMoney(shown.wage)}
                   </Text>
                 )}
                 {shown.loader_wage !== null && !shown.no_loader && (

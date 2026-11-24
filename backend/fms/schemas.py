@@ -12,7 +12,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .wages import MAX_BATTI, MachineKind, Role, Unit
+from .wages import MAX_BATTI, MachineKind, Role, Shift, Unit
 
 Dimension = Annotated[Decimal, Field(gt=0, le=100, max_digits=7, decimal_places=3)]
 SizeValue = Annotated[Decimal, Field(gt=0, le=1000, max_digits=8, decimal_places=3)]
@@ -234,7 +234,9 @@ class ProductionCreate(In):
     size_id: str | None = None
     cuts: Cuts = 0
     batti: Batti | None = None
-    quantity: Quantity
+    # Block cutter: the shift worked. Its quantity is 1 (one shift).
+    shift: Shift | None = None
+    quantity: Quantity = 1
     # Someone filling in for the machine's usual loader on this entry only.
     loader_id: str | None = None
     notes: Notes | None = None
@@ -249,6 +251,7 @@ class ProductionUpdate(In):
     size_id: str | None = None
     cuts: Cuts | None = None
     batti: Batti | None = None
+    shift: Shift | None = None
     quantity: Quantity | None = None
     loader_id: str | None = None
     notes: Notes | None = None
@@ -276,11 +279,16 @@ class ProductionOut(Out):
     piece_rft: Decimal | None
     cuts: int
     batti: int | None
+    shift: Shift | None = None
     quantity: int
     loader_id: str | None  # only when chosen on this entry
     notes: str | None
     area_sqft: Decimal
     rft_total: Decimal | None
+    # Splitting machine: the sq ft the operator's cutting and the loader's unloading
+    # are paid on (loading is paid on area_sqft).
+    cutting_sqft: Decimal | None = None
+    unloading_sqft: Decimal | None = None
     # The pay of `paid_worker_id` in the role `paid_as` (the operator, in entry lists).
     paid_as: Role = Role.OPERATOR
     paid_worker_id: str | None = None
@@ -311,13 +319,16 @@ class WagePreviewIn(In):
     size_id: str | None = None
     cuts: Cuts = 0
     batti: Batti | None = None
-    quantity: Quantity
+    shift: Shift | None = None
+    quantity: Quantity = 1
     loader_id: str | None = None
 
 
 class WagePreviewOut(BaseModel):
     area_sqft: Decimal
     rft_total: Decimal | None
+    cutting_sqft: Decimal | None = None
+    unloading_sqft: Decimal | None = None
     piece_sqft: Decimal
     piece_rft: Decimal | None
     wage: Decimal | None
@@ -373,6 +384,7 @@ class WorkerWagesOut(BaseModel):
     total_area_sqft: Decimal
     total_rft: Decimal
     total_cuts: int
+    total_shifts: int = 0  # block cutter shifts worked
     total_wage: Decimal
     missing_rate_entries: int
     entries: list[ProductionOut] | None = None
@@ -399,6 +411,7 @@ class ProductionBucketOut(BaseModel):
     total_area_sqft: Decimal
     total_rft: Decimal
     total_cuts: int
+    total_shifts: int = 0  # block cutter shifts worked
     total_wage: Decimal
     missing_rate_entries: int
 

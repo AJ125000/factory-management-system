@@ -90,12 +90,16 @@ class _Totals:
         self.area = Decimal(0)
         self.rft = Decimal(0)
         self.cuts = 0
+        self.shifts = 0
         self.wage = ZERO
         self.missing = 0
 
     def add(self, entry: ProductionEntry, wages: list[Decimal | None], rft: bool = True) -> None:
         self.entry_count += 1
-        self.quantity += entry.quantity
+        if entry.shift is not None:  # a block cutter shift, not pieces
+            self.shifts += 1
+        else:
+            self.quantity += entry.quantity
         self.area += entry.area_sqft
         if rft:  # loaders are paid by sq ft: running ft would mean nothing on their slip
             self.rft += entry.rft_total or 0
@@ -148,6 +152,7 @@ def wages_report(
                 total_area_sqft=_area(totals.area),
                 total_rft=_area(totals.rft),
                 total_cuts=totals.cuts,
+                total_shifts=totals.shifts,
                 total_wage=totals.wage,
                 missing_rate_entries=totals.missing,
                 entries=outs if include_entries else None,
@@ -181,6 +186,7 @@ def _bucket_out(period: str, t: _Totals) -> ProductionBucketOut:
         total_area_sqft=_area(t.area),
         total_rft=_area(t.rft),
         total_cuts=t.cuts,
+        total_shifts=t.shifts,
         total_wage=t.wage,
         missing_rate_entries=t.missing,
     )

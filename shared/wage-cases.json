@@ -580,5 +580,71 @@
         "polish_3"
       ]
     }
+  },
+  {
+    "name": "block cutter shift",
+    "kind": "block_cutter",
+    "role": "operator",
+    "piece_sqft": "0",
+    "piece_rft": null,
+    "cuts": 0,
+    "quantity": 1,
+    "batti": null,
+    "rates": {
+      "shift": "450"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "shift",
+          "amount": "450.00"
+        }
+      ],
+      "total": "450.00",
+      "missing": []
+    }
+  },
+  {
+    "name": "block cutter odd shift rate",
+    "kind": "block_cutter",
+    "role": "operator",
+    "piece_sqft": "0",
+    "piece_rft": null,
+    "cuts": 0,
+    "quantity": 1,
+    "batti": null,
+    "rates": {
+      "shift": "333.333"
+    },
+    "expected": {
+      "lines": [
+        {
+          "component": "shift",
+          "amount": "333.33"
+        }
+      ],
+      "total": "333.33",
+      "missing": []
+    }
+  },
+  {
+    "name": "block cutter missing rate",
+    "kind": "block_cutter",
+    "role": "operator",
+    "piece_sqft": "0",
+    "piece_rft": null,
+    "cuts": 0,
+    "quantity": 1,
+    "batti": null,
+    "rates": {
+      "shift": null
+    },
+    "expected": {
+      "lines": [],
+      "total": null,
+      "missing": [
+        "shift"
+      ]
+    }
   }
 ]

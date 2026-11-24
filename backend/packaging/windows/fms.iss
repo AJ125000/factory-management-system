@@ -1,6 +1,6 @@
 ; Inno Setup script for the FMS Windows installer (built by CI; see .github/workflows/ci.yml).
 ;
-;   iscc /DAppVersion=0.7.0 packaging\windows\fms.iss
+;   iscc /DAppVersion=0.8.0 packaging\windows\fms.iss
 ;
 ; Installs for the current user only (no admin rights needed). The data lives separately
 ; in %LOCALAPPDATA%\FMS, so installing a new version or uninstalling never touches it.

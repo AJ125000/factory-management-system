@@ -1,6 +1,7 @@
 import {
   Alert,
   Anchor,
+  Badge,
   Button,
   Card,
   Checkbox,
@@ -12,11 +13,12 @@ import {
   Text,
 } from '@mantine/core';
 import { IconAlertTriangle, IconChevronDown, IconChevronRight, IconPrinter } from '@tabler/icons-react';
-import { Fragment, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
 
-import { useMachines, useSettings, useWagesReport, useWorkers } from '../api/hooks';
+import { useMachines, useSettings, useWagesReport } from '../api/hooks';
+import { usePendingProduction, useWorkersWithPending } from '../api/pending';
 import { ExportMenu } from '../components/ExportMenu';
 import type { Language, WorkerWages } from '../api/types';
 import {
@@ -27,7 +29,15 @@ import {
   type PeriodValue,
 } from '../components/common';
 import { localName } from '../i18n';
-import { componentLabel, entryDetails, entrySize, lineBasis, lineRate } from '../lib/entryText';
+import {
+  componentLabel,
+  entryDetails,
+  entrySize,
+  lineBasis,
+  lineRate,
+  splittingText,
+} from '../lib/entryText';
+import { withPendingWages } from '../lib/localEntries';
 import { formatDate, formatMoney, formatNumber } from '../lib/format';
 import { defaultPreset } from '../lib/periods';
 
@@ -56,7 +66,20 @@ export default function WagesPage() {
   const [slipLang, setSlipLang] = useState<Language | null>(null);
   const lang = slipLang ?? settings?.print_language ?? 'hi';
 
-  const rows = report.data?.workers ?? [];
+  // Add this device's entries that haven't reached the laptop yet.
+  const pending = usePendingProduction();
+  const people = useWorkersWithPending(true).data;
+  const hasPending = pending.created.length + pending.edited.size + pending.deleted.size > 0;
+  const rows = useMemo(
+    () =>
+      hasPending
+        ? withPendingWages(report.data?.workers ?? [], pending, active.start, active.end, people ?? [])
+        : (report.data?.workers ?? []),
+    [hasPending, report.data, pending, active.start, active.end, people],
+  );
+  const pendingRows = rows.filter(isPending).length;
+  const totalWage = hasPending ? sumMoney(rows.map((r) => r.total_wage)) : report.data?.total_wage;
+  const missingEntries = rows.reduce((n, r) => n + r.missing_rate_entries, 0);
   const allSelected = rows.length > 0 && selected.length === rows.length;
 
   const print = () => {
@@ -110,20 +133,26 @@ export default function WagesPage() {
         </Group>
       </Card>
 
-      {report.data && (
+      {(report.data || hasPending) && (
         <SimpleGrid cols={{ base: 1, xs: 3 }} mb="md">
-          <Stat label={t('wages.totalWages')} value={formatMoney(report.data.total_wage)} />
+          <Stat label={t('wages.totalWages')} value={formatMoney(totalWage ?? '0')} />
           <Stat label={t('wages.workersPaid')} value={String(rows.length)} />
           <Stat
             label={t('wages.totalArea')}
-            value={`${formatNumber(report.data.total_area_sqft)} ${t('units.sqft')}`}
+            value={`${formatNumber(report.data?.total_area_sqft ?? '0')} ${t('units.sqft')}`}
           />
         </SimpleGrid>
       )}
 
-      {(report.data?.missing_rate_entries ?? 0) > 0 && (
+      {pendingRows > 0 && (
+        <Alert color={report.data ? 'gray' : 'orange'} variant="light" mb="md">
+          {t(report.data ? 'wages.pendingNote' : 'wages.onlyPending')}
+        </Alert>
+      )}
+
+      {missingEntries > 0 && (
         <Alert color="orange" variant="light" icon={<IconAlertTriangle />} mb="md">
-          {t('wages.missingAlert', { count: report.data!.missing_rate_entries })}{' '}
+          {t('wages.missingAlert', { count: missingEntries })}{' '}
           <Anchor component={Link} to="/rates" size="sm">
             {t('production.setRates')}
           </Anchor>
@@ -140,7 +169,7 @@ export default function WagesPage() {
       )}
 
       <Card withBorder>
-        {report.isSuccess && rows.length === 0 ? (
+        {(report.isSuccess || hasPending) && rows.length === 0 ? (
           <Text c="dimmed" ta="center" py="xl">
             {t('wages.noData')}
           </Text>
@@ -167,6 +196,7 @@ export default function WagesPage() {
                   <Table.Th className="num">
                     {t('wages.rft')}
                   </Table.Th>
+                  <Table.Th className="num">{t('wages.shifts')}</Table.Th>
                   <Table.Th className="num">{t('wages.wage')}</Table.Th>
                 </Table.Tr>
               </Table.Thead>
@@ -198,17 +228,23 @@ export default function WagesPage() {
                             <IconChevronRight size={16} />
                           )}
                           <WorkerName nameEn={r.name_en} nameHi={r.name_hi} />
+                          {isPending(r) && (
+                            <Badge size="xs" color="gray" variant="light">
+                              {t('sync.pending')}
+                            </Badge>
+                          )}
                         </Group>
                       </Table.Td>
                       <Table.Td>
                         {localName(r.worker_type_name_en, r.worker_type_name_hi, i18n.language)}
                       </Table.Td>
                       <Table.Td className="num">{r.entry_count}</Table.Td>
-                      <Table.Td className="num">{r.total_quantity}</Table.Td>
+                      <Table.Td className="num">{r.total_quantity || '—'}</Table.Td>
                       <Table.Td className="num">{formatNumber(r.total_area_sqft)}</Table.Td>
                       <Table.Td className="num">
                         {Number(r.total_rft) > 0 ? formatNumber(r.total_rft) : '—'}
                       </Table.Td>
+                      <Table.Td className="num">{r.total_shifts || '—'}</Table.Td>
                       <Table.Td className="num">
                         <Text fw={700}>{formatMoney(r.total_wage)}</Text>
                         {r.missing_rate_entries > 0 && (
@@ -220,7 +256,7 @@ export default function WagesPage() {
                     </Table.Tr>
                     {expanded === r.worker_id && (
                       <Table.Tr>
-                        <Table.Td colSpan={8} bg="var(--mantine-color-gray-0)">
+                        <Table.Td colSpan={9} bg="var(--mantine-color-gray-0)">
                           <WorkerEntries row={r} />
                         </Table.Td>
                       </Table.Tr>
@@ -239,7 +275,7 @@ export default function WagesPage() {
 function WorkerEntries({ row }: { row: WorkerWages }) {
   const { t, i18n } = useTranslation();
   const machines = useMachines(true).data ?? [];
-  const workers = useWorkers(true).data ?? [];
+  const workers = useWorkersWithPending(true).data ?? [];
   const local = (x: { name_en: string; name_hi: string | null } | undefined) =>
     x ? localName(x.name_en, x.name_hi, i18n.language) : '';
   return (
@@ -258,9 +294,17 @@ function WorkerEntries({ row }: { row: WorkerWages }) {
       <Table.Tbody>
         {(row.entries ?? []).map((e) => {
           const details = entryDetails(e, t);
+          const split = splittingText(e, t);
           return (
             <Table.Tr key={`${e.id}-${e.paid_as}`}>
-              <Table.Td style={{ whiteSpace: 'nowrap' }}>{formatDate(e.entry_date)}</Table.Td>
+              <Table.Td style={{ whiteSpace: 'nowrap' }}>
+                {formatDate(e.entry_date)}
+                {isPending(e) && (
+                  <Badge display="block" mt={2} size="xs" color="gray" variant="light">
+                    {t('sync.pending')}
+                  </Badge>
+                )}
+              </Table.Td>
               <Table.Td>
                 {local(machines.find((m) => m.id === e.machine_id))}
                 {e.paid_as === 'loader' && (
@@ -276,8 +320,13 @@ function WorkerEntries({ row }: { row: WorkerWages }) {
                     {details}
                   </Text>
                 )}
+                {split && (
+                  <Text size="xs" c="dimmed">
+                    {split}
+                  </Text>
+                )}
               </Table.Td>
-              <Table.Td className="num">{e.quantity}</Table.Td>
+              <Table.Td className="num">{e.shift ? '—' : e.quantity}</Table.Td>
               <Table.Td className="num">
                 {e.wage_lines.map((l) => (
                   <div key={l.component}>{lineBasis(l, t)}</div>
@@ -300,3 +349,12 @@ function WorkerEntries({ row }: { row: WorkerWages }) {
     </Table>
   );
 }
+
+function sumMoney(values: string[]): string {
+  const paise = values.reduce((n, v) => n + BigInt(v.replace('.', '')), 0n);
+  const neg = paise < 0n;
+  const abs = neg ? -paise : paise;
+  return `${neg ? '-' : ''}${abs / 100n}.${(abs % 100n).toString().padStart(2, '0')}`;
+}
+
+const isPending = (x: object) => (x as { pending?: boolean }).pending === true;

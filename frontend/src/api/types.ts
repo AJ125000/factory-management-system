@@ -1,10 +1,16 @@
 // Mirrors backend/fms/schemas.py. Decimal values arrive as strings (e.g. "180.00").
 
 export type Role = 'operator' | 'loader';
-export type MachineKind = 'block_cutting' | 'double_edge' | 'table_polish' | 'single_cutting';
+export type MachineKind =
+  | 'block_cutting'
+  | 'double_edge'
+  | 'table_polish'
+  | 'single_cutting'
+  | 'block_cutter'; // paid per shift (not the splitting machine, block_cutting)
+export type Shift = 'day' | 'night';
 /** 'cutting', 'loading', 'unloading', or 'polish_N' for table polish with N batti. */
 export type RateComponent = string;
-export type Unit = 'sqft' | 'rft';
+export type Unit = 'sqft' | 'rft' | 'shift';
 export type Language = 'en' | 'hi';
 export type PayPeriod = 'half_month' | 'month';
 export type Decimal = string;
@@ -113,11 +119,15 @@ export interface ProductionEntry {
   piece_rft: Decimal | null;
   cuts: number;
   batti: number | null;
+  shift: Shift | null; // block cutter: the shift worked (the entry is one shift)
   quantity: number;
   loader_id: string | null; // only when someone filled in on this entry
   notes: string | null;
   area_sqft: Decimal;
   rft_total: Decimal | null;
+  /** Splitting machine: sq ft the operator's cutting and the loader's unloading are paid on. */
+  cutting_sqft: Decimal | null;
+  unloading_sqft: Decimal | null;
   /** The pay of paid_worker_id as paid_as (the operator, except on a loader's wage slip). */
   paid_as: Role;
   paid_worker_id: string | null;
@@ -140,6 +150,7 @@ export interface ProductionInput {
   size_id: string | null;
   cuts: number;
   batti: number | null;
+  shift: Shift | null;
   quantity: number;
   loader_id: string | null;
   notes?: string | null;
@@ -148,6 +159,8 @@ export interface ProductionInput {
 export interface WagePreview {
   area_sqft: Decimal;
   rft_total: Decimal | null;
+  cutting_sqft: Decimal | null;
+  unloading_sqft: Decimal | null;
   piece_sqft: Decimal;
   piece_rft: Decimal | null;
   wage: Decimal | null;
@@ -173,6 +186,7 @@ export interface WorkerWages {
   total_area_sqft: Decimal;
   total_rft: Decimal;
   total_cuts: number;
+  total_shifts: number; // block cutter shifts
   total_wage: Decimal;
   missing_rate_entries: number;
   entries: ProductionEntry[] | null;
@@ -208,6 +222,7 @@ export interface ProductionBucket {
   total_area_sqft: Decimal;
   total_rft: Decimal;
   total_cuts: number;
+  total_shifts: number; // block cutter shifts
   total_wage: Decimal;
   missing_rate_entries: number;
 }

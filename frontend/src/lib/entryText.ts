@@ -27,8 +27,12 @@ export function entrySize(
   return e.size_label ?? '';
 }
 
-/** Cuts / batti, when the machine has them: "2 cuts", "4 batti". */
-export function entryDetails(e: Pick<ProductionEntry, 'cuts' | 'batti'>, t: T): string {
+/** Cuts / batti / shift, when the machine has them: "2 cuts", "4 batti", "Night shift". */
+export function entryDetails(
+  e: Pick<ProductionEntry, 'cuts' | 'batti'> & { shift?: ProductionEntry['shift'] },
+  t: T,
+): string {
+  if (e.shift) return t(`shifts.${e.shift}`);
   return [
     e.cuts ? `${e.cuts} ${String(t('production.cuts')).toLowerCase()}` : '',
     e.batti ? t('production.battiCount', { count: e.batti }) : '',
@@ -37,7 +41,17 @@ export function entryDetails(e: Pick<ProductionEntry, 'cuts' | 'batti'>, t: T): 
     .join(' · ');
 }
 
-const unitKey = (l: Pick<WageLine, 'unit'>) => (l.unit === 'rft' ? 'units.rft' : 'units.sqft');
+/** Splitting machine: "Machine man prod. (sq ft): 120 · Unloading prod. (sq ft): 90". */
+export function splittingText(
+  e: Pick<ProductionEntry, 'cutting_sqft' | 'unloading_sqft'>,
+  t: T,
+): string {
+  if (e.cutting_sqft === null || e.unloading_sqft === null) return '';
+  return `${t('production.cuttingSqft')}: ${formatNumber(e.cutting_sqft)} · ${t('production.unloadingSqft')}: ${formatNumber(e.unloading_sqft)}`;
+}
+
+const unitKey = (l: Pick<WageLine, 'unit'>) =>
+  l.unit === 'rft' ? 'units.rft' : l.unit === 'shift' ? 'units.shift' : 'units.sqft';
 
 /** "80 running ft", "45 sq ft" — what a wage line's rate was multiplied by. */
 export function lineBasis(l: WageLine, t: T): string {
@@ -54,6 +68,7 @@ export const MACHINE_KINDS: MachineKind[] = [
   'table_polish',
   'single_cutting',
   'block_cutting',
+  'block_cutter',
 ];
 
 /** Machines for a dropdown, grouped by type: "Table polish" → machine 1, machine 2... */

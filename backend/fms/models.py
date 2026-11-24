@@ -90,7 +90,8 @@ class Machine(TimestampMixin, Base):
     __tablename__ = "machines"
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('block_cutting', 'double_edge', 'table_polish', 'single_cutting')",
+            "kind IN ('block_cutting', 'double_edge', 'table_polish', 'single_cutting', "
+            "'block_cutter')",
             name="kind",
         ),
     )
@@ -183,6 +184,7 @@ class ProductionEntry(TimestampMixin, Base):
     __table_args__ = (
         CheckConstraint("cuts >= 0", name="cuts_non_negative"),
         CheckConstraint("quantity >= 1", name="quantity_positive"),
+        CheckConstraint("shift IS NULL OR shift IN ('day', 'night')", name="shift"),
         Index("ix_production_entries_worker_date", "worker_id", "entry_date"),
     )
 
@@ -207,6 +209,8 @@ class ProductionEntry(TimestampMixin, Base):
     cuts: Mapped[int] = mapped_column(Integer, default=0)
     batti: Mapped[int | None] = mapped_column(Integer, nullable=True)
     quantity: Mapped[int] = mapped_column(Integer)
+    # Block cutter only: the shift worked ("day" or "night"); the entry is that shift.
+    shift: Mapped[str | None] = mapped_column(String(10), nullable=True)
     # Someone filling in for the machine's usual loader on this entry only.
     loader_id: Mapped[str | None] = mapped_column(
         ForeignKey("workers.id", ondelete="SET NULL"), nullable=True

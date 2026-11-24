@@ -96,10 +96,12 @@ export function allowedComponents(kind: MachineKind): RateComponent[] {
   if (kind === 'table_polish') {
     return [...Array.from({ length: MAX_BATTI }, (_, i) => polishComponent(i + 1)), 'unloading'];
   }
+  if (kind === 'block_cutter') return ['shift'];
   return ['cutting', 'unloading'];
 }
 
 export function componentUnit(kind: MachineKind, component: RateComponent): Unit {
+  if (component === 'shift') return 'shift';
   return component === 'cutting' && (kind === 'double_edge' || kind === 'single_cutting')
     ? 'rft'
     : 'sqft';
@@ -108,8 +110,13 @@ export function componentUnit(kind: MachineKind, component: RateComponent): Unit
 export const usesSizeTable = (kind: MachineKind) =>
   kind === 'double_edge' || kind === 'single_cutting';
 
+/** Paid a fixed amount per shift (attendance): no sizes and no loader. */
+export const isShiftPaid = (kind: MachineKind) => kind === 'block_cutter';
+export const hasLoader = (kind: MachineKind) => !isShiftPaid(kind);
+
 /** Which rates pay the operator, and which the loader, on this kind of machine. */
 export function roleComponents(kind: MachineKind, role: Role): RateComponent[] {
+  if (kind === 'block_cutter') return role === 'operator' ? ['shift'] : [];
   if (role === 'loader') return kind === 'block_cutting' ? ['loading', 'unloading'] : ['unloading'];
   if (kind === 'table_polish') return allowedComponents(kind).filter((c) => battiOf(c) !== null);
   return ['cutting'];
@@ -126,6 +133,9 @@ export interface PieceInput {
 
 export interface WageLineResult {
   component: RateComponent;
+  basis: string; // the sq ft / running ft / shifts the rate is multiplied by
+  unit: Unit;
+  rate: string;
   amount: string; // "180.00"
 }
 
@@ -138,6 +148,7 @@ export interface WageResult {
 function bases(kind: MachineKind, role: Role, p: PieceInput): [RateComponent, Dec][] {
   const sqft = dec(p.piece_sqft);
   const qty = p.quantity;
+  if (kind === 'block_cutter') return role === 'operator' ? [['shift', dec(qty)]] : [];
   if (kind === 'block_cutting') {
     if (role === 'operator') return [['cutting', times(times(times(sqft, 2), p.cuts), qty)]];
     return [
@@ -165,9 +176,16 @@ export function calculateWage(
   if (missing.length) return { lines: [], total: null, missing };
   let total = 0n;
   const lines = needed.map(([component, basis]) => {
-    const paise = toPaise(mul(basis, dec(rates[component]!)));
+    const rate = rates[component]!;
+    const paise = toPaise(mul(basis, dec(rate)));
     total += paise;
-    return { component, amount: paiseToString(paise) };
+    return {
+      component,
+      basis: str(basis),
+      unit: componentUnit(kind, component),
+      rate,
+      amount: paiseToString(paise),
+    };
   });
   return { lines, total: paiseToString(total), missing: [] };
 }
@@ -273,6 +291,20 @@ export function fraction(value: string): string {
 
 export const sizeLabel = (length: string, width: string) =>
   `${fraction(length)} × ${fraction(width)}`;
+
+/** Splitting machine: the sq ft the operator's cutting and the loader's unloading are
+ * paid on (same as the hub's production.splitting_sqft). Null on other machines. */
+export function splittingSqft(
+  kind: MachineKind,
+  p: Pick<PieceInput, 'piece_sqft' | 'cuts' | 'quantity'>,
+): { cutting: string; unloading: string } | null {
+  if (kind !== 'block_cutting') return null;
+  const sqft = dec(p.piece_sqft);
+  return {
+    cutting: str(times(times(times(sqft, 2), p.cuts), p.quantity)),
+    unloading: str(times(times(sqft, 1 + p.cuts), p.quantity)),
+  };
+}
 
 /** Total sq ft or running ft as a plain string, e.g. "30" or "3.984375". */
 export function totalOf(perPiece: string, quantity: number): string {

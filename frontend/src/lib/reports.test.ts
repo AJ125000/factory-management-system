@@ -12,6 +12,7 @@ const bucket = (period: string, area: string) => ({
   total_area_sqft: area,
   total_rft: '0',
   total_cuts: 2,
+  total_shifts: 0,
   total_wage: '100.00',
   missing_rate_entries: 0,
 });

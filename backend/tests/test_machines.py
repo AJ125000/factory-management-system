@@ -32,7 +32,9 @@ def test_machines_and_sheet_are_set_up(api):
         "table_polish",
         "single_cutting",
         "block_cutting",
+        "block_cutter",
     ]
+    assert machines[4]["name_en"] == "Block cutter 1"
     assert machines[0]["name_hi"] == "डबल एज कटिंग मशीन 1"
     assert machines[3]["name_en"] == "Splitting machine 1"
 

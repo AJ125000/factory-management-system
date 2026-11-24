@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from ..models import Worker
 from ..schemas import GroupBy, Language
 from ..wages import Role, Unit, batti_of
+from .production import piece_of, splitting_sqft
 from .reports import pays_in_period, production_summary, wages_report
 from .settings import get_settings
 
@@ -83,6 +84,14 @@ LABELS: dict[str, dict[str, str]] = {
         "per_sqft": "/sq ft",
         "per_rft": "/running ft",
         "no_loader": "Entries with no loader at the machine",
+        "shift": "Shift",
+        "shifts": "Shifts",
+        "day_shift": "Day",
+        "night_shift": "Night",
+        "per_shift": "/shift",
+        "shift_worker": "Per shift",
+        "cutting_sqft": "Machine man production (sq ft)",
+        "unloading_sqft": "Unloading production (sq ft)",
     },
     "hi": {
         "wages": "मज़दूरी",
@@ -121,6 +130,14 @@ LABELS: dict[str, dict[str, str]] = {
         "per_sqft": "/वर्ग फुट",
         "per_rft": "/रनिंग फुट",
         "no_loader": "बिना लोडर वाली एंट्रियाँ",
+        "shift": "शिफ़्ट",
+        "shifts": "शिफ़्टें",
+        "day_shift": "दिन",
+        "night_shift": "रात",
+        "per_shift": "/शिफ़्ट",
+        "shift_worker": "शिफ़्ट पर",
+        "cutting_sqft": "मशीन मैन उत्पादन (वर्ग फुट)",
+        "unloading_sqft": "अनलोडिंग उत्पादन (वर्ग फुट)",
     },
 }
 
@@ -149,6 +166,10 @@ def _size(e, lang: str) -> str:
     if e.length_ft is not None and e.width_ft is not None:
         return f"{format(e.length_ft.normalize(), 'f')} × {format(e.width_ft.normalize(), 'f')} ft"
     return ""
+
+
+def _unit(unit: Unit, t: dict[str, str]) -> str:
+    return {Unit.RFT: t["per_rft"], Unit.SHIFT: t["per_shift"]}.get(unit, t["per_sqft"])
 
 
 def _fmt_date(d: date) -> str:
@@ -253,6 +274,7 @@ def wages_workbook(
             t["area"],
             t["rft"],
             t["cuts"],
+            t["shifts"],
             t["wage"],
             t["missing"],
         ],
@@ -265,14 +287,16 @@ def wages_workbook(
                 w.total_area_sqft,
                 w.total_rft or None,
                 w.total_cuts or None,
+                w.total_shifts or None,
                 w.total_wage,
                 w.missing_rate_entries or None,
             ]
             for w in report.workers
         ],
-        {5: AREA, 6: AREA, 8: MONEY},
+        {5: AREA, 6: AREA, 9: MONEY},
         total=[
             t["total"],
+            None,
             None,
             None,
             None,
@@ -298,24 +322,35 @@ def wages_workbook(
             )
             rates = (
                 "; ".join(
-                    f"{component_label(line.component, lang)} {line.rate}"
-                    f"{t['per_rft'] if line.unit is Unit.RFT else t['per_sqft']}"
+                    f"{component_label(line.component, lang)} {line.rate}{_unit(line.unit, t)}"
                     for line in pay.result.lines
                 )
                 if pay.result
                 else t["rate_missing"]
             )
+            cutting_sqft, unloading_sqft = splitting_sqft(e.machine.kind, piece_of(e))
+            on_shift = e.shift is not None
+            role = (
+                t["shift_worker"]
+                if on_shift
+                else t["loader"]
+                if pay.role is Role.LOADER
+                else t["operator"]
+            )
             rows.append(
                 [
                     e.entry_date,
                     _name(worker.name_en, worker.name_hi, lang) if worker else "",
-                    t["loader"] if pay.role is Role.LOADER else t["operator"],
+                    role,
                     _name(e.machine.name_en, e.machine.name_hi, lang),
                     _size(e, lang),
+                    t[f"{e.shift}_shift"] if on_shift else None,
                     e.cuts or None,
                     e.batti,
-                    e.quantity,
-                    e.area_sqft,
+                    None if on_shift else e.quantity,
+                    None if on_shift else e.area_sqft,
+                    cutting_sqft,
+                    unloading_sqft,
                     e.rft_total,
                     rates,
                     pay.total,
@@ -331,17 +366,20 @@ def wages_workbook(
             t["role"],
             t["machine"],
             t["size"],
+            t["shift"],
             t["cuts"],
             t["batti"],
             t["pieces"],
             t["area"],
+            t["cutting_sqft"],
+            t["unloading_sqft"],
             t["rft"],
             t["rates"],
             t["wage"],
             t["notes"],
         ],
         rows,
-        {1: DATE, 9: AREA, 10: AREA, 12: MONEY},
+        {1: DATE, 10: AREA, 11: AREA, 12: AREA, 13: AREA, 15: MONEY},
     )
     return _save(wb)
 
@@ -377,7 +415,16 @@ def production_workbook(
     _table(
         ws,
         row,
-        [t[group_by], t["entries"], t["pieces"], t["area"], t["rft"], t["cuts"], t["wage"]],
+        [
+            t[group_by],
+            t["entries"],
+            t["pieces"],
+            t["area"],
+            t["rft"],
+            t["cuts"],
+            t["shifts"],
+            t["wage"],
+        ],
         [
             [
                 _period_label(b.period, group_by, lang),
@@ -386,11 +433,12 @@ def production_workbook(
                 b.total_area_sqft,
                 b.total_rft,
                 b.total_cuts,
+                b.total_shifts or None,
                 b.total_wage,
             ]
             for b in summary.buckets
         ],
-        {4: AREA, 5: AREA, 7: MONEY},
+        {4: AREA, 5: AREA, 8: MONEY},
         total=[
             t["total"],
             total.entry_count,
@@ -398,6 +446,7 @@ def production_workbook(
             total.total_area_sqft,
             total.total_rft,
             total.total_cuts,
+            total.total_shifts or None,
             total.total_wage,
         ],
     )

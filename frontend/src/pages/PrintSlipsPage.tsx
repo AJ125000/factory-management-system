@@ -10,7 +10,14 @@ import { useNavigate, useSearchParams } from 'react-router';
 import { useMachines, useSettings, useWagesReport, useWorkers } from '../api/hooks';
 import type { AppSettings, Language, Machine, Worker, WorkerWages } from '../api/types';
 import { localName } from '../i18n';
-import { componentLabel, entryDetails, entrySize, lineBasis, lineRate } from '../lib/entryText';
+import {
+  componentLabel,
+  entryDetails,
+  entrySize,
+  lineBasis,
+  lineRate,
+  splittingText,
+} from '../lib/entryText';
 import { formatAmount, formatDate, formatMoney, formatNumber, todayISO } from '../lib/format';
 
 export default function PrintSlipsPage() {
@@ -170,6 +177,7 @@ function Slip({
         <tbody>
           {entries.map((e) => {
             const details = entryDetails(e, t);
+            const split = splittingText(e, t);
             const many = e.wage_lines.length > 1;
             return (
               <tr key={`${e.id}-${e.paid_as}`}>
@@ -185,8 +193,9 @@ function Slip({
                 <td>
                   {entrySize(e, t)}
                   {details && <div className="sub">{details}</div>}
+                  {split && <div className="sub">{split}</div>}
                 </td>
-                <td className="num">{e.quantity}</td>
+                <td className="num">{e.shift ? '—' : e.quantity}</td>
                 <td className="num">
                   {e.wage_lines.map((l) => (
                     <div key={l.component} className={many ? 'sub' : undefined}>
@@ -217,9 +226,17 @@ function Slip({
         <tfoot>
           <tr>
             <td colSpan={3}>{t('common.total')}</td>
-            <td className="num">{row.total_quantity}</td>
             <td className="num">
-              {formatNumber(row.total_area_sqft)} {t('units.sqft')}
+              {row.total_quantity || (row.total_shifts ? '' : 0)}
+              {row.total_shifts > 0 && (
+                <div className={row.total_quantity ? 'sub' : undefined}>
+                  {t('slip.shiftCount', { count: row.total_shifts })}
+                </div>
+              )}
+            </td>
+            <td className="num">
+              {(Number(row.total_area_sqft) > 0 || !row.total_shifts) &&
+                `${formatNumber(row.total_area_sqft)} ${t('units.sqft')}`}
               {Number(row.total_rft) > 0 && (
                 <div className="sub">
                   {formatNumber(row.total_rft)} {t('units.rft')}

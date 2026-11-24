@@ -13,6 +13,8 @@ from pathlib import Path
 from fms.wages import MissingRateError, Piece, calculate_wage, perimeter
 
 B, D, P, S = "block_cutting", "double_edge", "table_polish", "single_cutting"
+BC = "block_cutter"  # paid per shift
+SHIFT = {"sqft": "0", "rft": None}
 
 
 def block(length, width):
@@ -68,6 +70,9 @@ CASES = [
     ("polish 5 batti", P, "operator", block("2.25", "1.333"), 0, 11, 5, {"polish_5": "1.25"}),
     ("polish loader", P, "loader", block("2", "1.5"), 0, 9, 4, {"unloading": "0.15"}),
     ("polish missing batti rate", P, "operator", block("2", "2"), 0, 1, 3, {"polish_3": None}),
+    ("block cutter shift", BC, "operator", SHIFT, 0, 1, None, {"shift": "450"}),
+    ("block cutter odd shift rate", BC, "operator", SHIFT, 0, 1, None, {"shift": "333.333"}),
+    ("block cutter missing rate", BC, "operator", SHIFT, 0, 1, None, {"shift": None}),
 ]
 
 

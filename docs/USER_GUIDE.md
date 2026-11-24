@@ -12,7 +12,12 @@
    - *Double edge cutting*: tap a size (2×2, 2×1½, 2×1) or type another size in feet.
    - *Single cutting*: pick the size (inches) from the list.
    - *Table polish*: length × width in feet and the number of **batti**.
-   - *Splitting machine*: length × width in feet and the number of cuts.
+   - *Splitting machine*: length × width in feet and the number of cuts. The list shows
+     the sq ft paid for loading (*Area*), for the machine man (*Machine man prod.*) and
+     for unloading (*Unloading prod.*).
+   - *Block cutter*: paid per shift. Choose **Day** or **Night**; one entry per worker
+     per shift (for a double shift, enter both). Anyone can be chosen, and there is no
+     loader. After saving, the machine, date and shift stay filled in for the next worker.
 
    Then the number of pieces → **Save entry**. The operator's and the loader's wages are
    shown before you save. After saving, everything except the pieces stays filled in.
@@ -30,7 +35,8 @@
 
 ### Machines & rates
 The page has one card per machine **type** (double edge, table polish, single cutting,
-splitting). Rates and size tables belong to the type: every machine of that type uses
+splitting, block cutter). The block cutter has just one rate, **pay per shift**, the same
+for day and night. Rates and size tables belong to the type: every machine of that type uses
 them. Each machine has its own loader.
 - **Add machine** → a new machine of that type (e.g. *Table polish machine 3*). It uses
   the type's rates and sizes straight away; set its loader with **Change loader**.
@@ -54,6 +60,10 @@ day, month or year; you can **Download Excel** or **Print / Save as PDF**.
 - FMS works **without the laptop**. The top of the screen shows:
   *All saved* · *Laptop not reachable · 2 changes waiting* · *1 change not saved*.
 - Waiting changes are sent **automatically** when the laptop can be reached.
+- Entries made on the phone while the laptop is off show straight away in **Production**
+  and **Wages** on that phone, marked *Not sent yet*, with their wages worked out on the
+  phone. Other devices see them once they reach the laptop. Reports and Excel need the
+  laptop.
 - If a change is *not saved* (e.g. the worker was archived), tap the status to see it
   and choose **Try again** or **Discard**.
 
@@ -72,7 +82,11 @@ day, month or year; you can **Download Excel** or **Print / Save as PDF**.
    - *डबल एज कटिंग*: साइज़ दबाएँ (2×2, 2×1½, 2×1) या दूसरा साइज़ फुट में लिखें।
    - *सिंगल कटिंग*: सूची से साइज़ (इंच) चुनें।
    - *टेबल पॉलिश*: लंबाई × चौड़ाई फुट में और **बत्ती** की संख्या।
-   - *स्प्लिटिंग मशीन*: लंबाई × चौड़ाई फुट में और कट।
+   - *स्प्लिटिंग मशीन*: लंबाई × चौड़ाई फुट में और कट। सूची में लोडिंग (*क्षेत्रफल*), मशीन मैन
+     (*मशीन मैन उत्पादन*) और अनलोडिंग (*अनलोडिंग उत्पादन*) के वर्ग फुट दिखते हैं।
+   - *ब्लॉक कटर*: शिफ़्ट के हिसाब से पैसे। **दिन** या **रात** चुनें; हर मज़दूर की हर शिफ़्ट
+     की एक एंट्री (डबल शिफ़्ट के लिए दोनों डालें)। कोई भी मज़दूर चुना जा सकता है, लोडर नहीं
+     होता। सहेजने के बाद मशीन, तारीख और शिफ़्ट अगले मज़दूर के लिए भरी रहती है।
 
    फिर नग → **एंट्री सहेजें**। सहेजने से पहले ऑपरेटर और लोडर दोनों की मज़दूरी दिख जाती
    है। सहेजने के बाद नग छोड़कर सब भरा रहता है।
@@ -89,7 +103,8 @@ day, month or year; you can **Download Excel** or **Print / Save as PDF**.
 4. **Excel डाउनलोड करें** से अपने रिकॉर्ड के लिए कॉपी रखें।
 
 ### मशीनें और दरें
-पेज पर हर मशीन **प्रकार** (डबल एज, टेबल पॉलिश, सिंगल कटिंग, स्प्लिटिंग) का एक कार्ड है।
+पेज पर हर मशीन **प्रकार** (डबल एज, टेबल पॉलिश, सिंगल कटिंग, स्प्लिटिंग, ब्लॉक कटर) का एक
+कार्ड है। ब्लॉक कटर की सिर्फ़ एक दर है, **प्रति शिफ़्ट मज़दूरी**, दिन और रात के लिए एक ही।
 दरें और साइज़ तालिका प्रकार की होती हैं: उस प्रकार की हर मशीन उन्हीं से चलती है। हर मशीन
 का अपना लोडर होता है।
 - **मशीन जोड़ें** → उस प्रकार की नई मशीन (जैसे *टेबल पॉलिश मशीन 3*)। यह तुरंत प्रकार की
@@ -114,6 +129,10 @@ day, month or year; you can **Download Excel** or **Print / Save as PDF**.
 - FMS **लैपटॉप के बिना भी** चलता है। स्क्रीन के ऊपर दिखता है:
   *सब सहेजा गया* · *लैपटॉप से संपर्क नहीं · 2 बदलाव बाकी* · *1 बदलाव नहीं सहेजा गया*।
 - बाकी बदलाव लैपटॉप मिलते ही **अपने-आप** भेज दिए जाते हैं।
+- लैपटॉप बंद होने पर फ़ोन से की गई एंट्रियाँ उसी फ़ोन पर **उत्पादन** और **मज़दूरी** में तुरंत
+  दिखती हैं, *अभी भेजा नहीं गया* के निशान के साथ, और उनकी मज़दूरी फ़ोन पर ही जोड़ी जाती है।
+  दूसरे डिवाइस पर ये लैपटॉप तक पहुँचने के बाद दिखेंगी। रिपोर्ट और Excel के लिए लैपटॉप
+  चाहिए।
 - अगर कोई बदलाव *नहीं सहेजा गया* (जैसे मज़दूर निष्क्रिय था), तो ऊपर की स्थिति पर टैप करें
   और **फिर कोशिश करें** या **हटाएँ** चुनें।
 

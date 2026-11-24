@@ -43,21 +43,21 @@ def test_wages_excel_in_english(api):
     rows = _rows(wb["Wages"])
     assert rows[0][0] == "Kota Stone Factory"
     header = rows[2]
-    assert header[0] == "Worker" and header[7] == "Wages (₹)"
+    assert header[0] == "Worker" and header[8] == "Wages (₹)"
     ramesh, suresh, total = rows[3], rows[4], rows[5]
     assert ramesh[:2] == ["Ramesh", "Machine Operator"]
-    assert Decimal(str(ramesh[7])) == Decimal("180")  # a real number, not text
+    assert Decimal(str(ramesh[8])) == Decimal("180")  # a real number, not text
     assert suresh[:2] == ["Suresh", "Loader"]
-    assert Decimal(str(suresh[7])) == Decimal("37.5")
-    assert total[0] == "Total" and Decimal(str(total[7])) == Decimal("217.5")
+    assert Decimal(str(suresh[8])) == Decimal("37.5")
+    assert total[0] == "Total" and Decimal(str(total[8])) == Decimal("217.5")
 
     entries = _rows(wb["Entries"])
     first, loader = entries[3], entries[4]
     assert first[0].date() == date(2026, 1, 5)  # a real date cell
     assert first[1:5] == ["Ramesh", "Operator", "Splitting machine 1", "2 × 3 ft"]
-    assert first[10] == "Cutting 1.5/sq ft"
+    assert first[13] == "Cutting 1.5/sq ft"
     assert loader[1:3] == ["Suresh", "Loader"]
-    assert Decimal(str(loader[11])) == Decimal("37.5")
+    assert Decimal(str(loader[14])) == Decimal("37.5")
 
 
 def test_wages_excel_in_hindi(api):
@@ -71,7 +71,7 @@ def test_wages_excel_in_hindi(api):
     assert rows[3][:2] == ["रमेश", "मशीन ऑपरेटर"]
     loader_entry = [r for r in _rows(wb["एंट्रियाँ"]) if r[1] == "सुरेश"][0]
     assert loader_entry[2] == "लोडर"
-    assert loader_entry[10] == "लोडिंग 0.5/वर्ग फुट; अनलोडिंग 0.25/वर्ग फुट"
+    assert loader_entry[13] == "लोडिंग 0.5/वर्ग फुट; अनलोडिंग 0.25/वर्ग फुट"
 
 
 def test_production_excel_by_month(api):
@@ -86,7 +86,7 @@ def test_production_excel_by_month(api):
     )
     rows = _rows(wb.active)
     assert [r[0] for r in rows[4:]] == ["जनवरी 2026", "फ़रवरी 2026", "कुल"]
-    assert Decimal(str(rows[-1][6])) == Decimal("435")  # operator + loader pay
+    assert Decimal(str(rows[-1][7])) == Decimal("435")  # operator + loader pay
 
 
 def test_export_rejects_bad_period(api):

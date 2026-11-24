@@ -57,6 +57,7 @@ import type {
   Rate,
   RateComponent,
   Role,
+  Unit,
   Worker,
 } from '../api/types';
 import { DateField, PageHeader, notifyError, notifySaved } from '../components/common';
@@ -72,6 +73,7 @@ import {
   loaderOn,
   roleComponents,
   sizeLabel,
+  hasLoader,
   usesSizeTable,
 } from '../lib/wages';
 
@@ -212,8 +214,8 @@ function TypeCard({
   // Table polish shows the batti counts that have a rate (plus "add a batti rate").
   const shown = (role: Role) =>
     roleComponents(kind, role).filter((c) => battiOf(c) === null || history.some((r) => r.component === c));
-  const unitText = (c: RateComponent) =>
-    componentUnit(kind, c) === 'rft' ? t('machines.perRft') : t('machines.perSqft');
+  const unitText = (c: RateComponent) => unitLabel(t, componentUnit(kind, c));
+  const withLoader = hasLoader(kind);
 
   const rateCard = (c: RateComponent) => {
     const cur = currentRate(rates, kind, c, today);
@@ -295,7 +297,12 @@ function TypeCard({
 
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
         <Stack gap="xs">
-          <Text fw={600}>{t('machines.operatorRates')}</Text>
+          <Text fw={600}>{withLoader ? t('machines.operatorRates') : t('machines.shiftRate')}</Text>
+          {!withLoader && (
+            <Text size="xs" c="dimmed">
+              {t('machines.shiftRateHelp')}
+            </Text>
+          )}
           <SimpleGrid cols={2} spacing="xs">
             {shown('operator').map(rateCard)}
           </SimpleGrid>
@@ -311,12 +318,14 @@ function TypeCard({
             </Button>
           )}
         </Stack>
-        <Stack gap="xs">
-          <Text fw={600}>{t('machines.loaderRates')}</Text>
-          <SimpleGrid cols={2} spacing="xs">
-            {shown('loader').map(rateCard)}
-          </SimpleGrid>
-        </Stack>
+        {withLoader && (
+          <Stack gap="xs">
+            <Text fw={600}>{t('machines.loaderRates')}</Text>
+            <SimpleGrid cols={2} spacing="xs">
+              {shown('loader').map(rateCard)}
+            </SimpleGrid>
+          </Stack>
+        )}
       </SimpleGrid>
 
       <Stack gap={4} mt="lg">
@@ -337,7 +346,7 @@ function TypeCard({
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>{t('production.machine')}</Table.Th>
-                <Table.Th>{t('machines.loaderNow')}</Table.Th>
+                {withLoader && <Table.Th>{t('machines.loaderNow')}</Table.Th>}
                 <Table.Th w={110} />
               </Table.Tr>
             </Table.Thead>
@@ -365,26 +374,30 @@ function TypeCard({
                         </Text>
                       )}
                     </Table.Td>
-                    <Table.Td>
-                      <Text size="sm" c={loader ? undefined : 'orange'}>
-                        {workerName(loaderId)}
-                      </Text>
-                      {loader?.is_archived && (
-                        <Text size="xs" c="orange">
-                          {t('machines.archivedLoader', { name: loader.name_en })}
+                    {withLoader && (
+                      <Table.Td>
+                        <Text size="sm" c={loader ? undefined : 'orange'}>
+                          {workerName(loaderId)}
                         </Text>
-                      )}
-                    </Table.Td>
+                        {loader?.is_archived && (
+                          <Text size="xs" c="orange">
+                            {t('machines.archivedLoader', { name: loader.name_en })}
+                          </Text>
+                        )}
+                      </Table.Td>
+                    )}
                     <Table.Td>
                       <Group gap={4} justify="flex-end" wrap="nowrap">
-                        <Button
-                          size="compact-xs"
-                          variant="light"
-                          leftSection={<IconUserCog size={14} />}
-                          onClick={() => open({ kind: 'loader', machine: m })}
-                        >
-                          {t('machines.changeLoader')}
-                        </Button>
+                        {withLoader && (
+                          <Button
+                            size="compact-xs"
+                            variant="light"
+                            leftSection={<IconUserCog size={14} />}
+                            onClick={() => open({ kind: 'loader', machine: m })}
+                          >
+                            {t('machines.changeLoader')}
+                          </Button>
+                        )}
                         <Menu position="bottom-end" withinPortal>
                           <Menu.Target>
                             <ActionIcon variant="subtle" color="gray" aria-label={t('common.actions')}>
@@ -554,6 +567,7 @@ function TypeCard({
             )}
           </Accordion.Panel>
         </Accordion.Item>
+        {withLoader && (
         <Accordion.Item value="loaders">
           <Accordion.Control>{t('machines.loaderHistory')}</Accordion.Control>
           <Accordion.Panel>
@@ -623,6 +637,7 @@ function TypeCard({
             )}
           </Accordion.Panel>
         </Accordion.Item>
+        )}
       </Accordion>
     </Card>
   );
@@ -696,6 +711,10 @@ function MachineForm({
   );
 }
 
+function unitLabel(t: (key: string) => string, unit: Unit): string {
+  return unit === 'rft' ? t('machines.perRft') : unit === 'shift' ? t('machines.perShift') : t('machines.perSqft');
+}
+
 function RateForm({
   kind,
   existing,
@@ -717,7 +736,7 @@ function RateForm({
   const [rate, setRate] = useState<string | number>(existing ? Number(existing.rate) : '');
   const [from, setFrom] = useState<string | null>(existing?.effective_from ?? todayISO());
   const [note, setNote] = useState(existing?.note ?? '');
-  const unit = componentUnit(kind, component) === 'rft' ? t('machines.perRft') : t('machines.perSqft');
+  const unit = unitLabel(t, componentUnit(kind, component));
   const valid = rate !== '' && Number(rate) >= 0 && from;
 
   const submit = () => {
@@ -765,7 +784,7 @@ function RateForm({
                 group: t('machines.loaderRates'),
                 items: roleComponents(kind, 'loader').map((c) => ({ value: c, label: label(c) })),
               },
-            ]}
+            ].filter((g) => g.items.length > 0)}
           />
         )}
         <NumberInput
